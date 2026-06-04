@@ -1,185 +1,26 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:file_saver/file_saver.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import 'sample_songs.dart';
+import 'song.dart';
 
 void main() {
   runApp(const TodayMusicApp());
 }
 
-class Song {
-  final String artist;
-  final String title;
-  final List<String> tags;
-  final String memo;
-  final String link;
-
-  const Song({
-    required this.artist,
-    required this.title,
-    required this.tags,
-    this.memo = '',
-    this.link = '',
-  });
-
-  factory Song.fromJson(Map<String, Object?> json) {
-    final rawTags = json['tags'];
-
-    return Song(
-      artist: (json['artist'] as String?)?.trim() ?? '',
-      title: (json['title'] as String?)?.trim() ?? '',
-      tags: rawTags is List
-          ? rawTags.whereType<String>().map((tag) => tag.trim()).toList()
-          : const [],
-      memo: (json['memo'] as String?)?.trim() ?? '',
-      link: (json['link'] as String?)?.trim() ?? '',
-    );
-  }
-
-  Map<String, Object?> toJson() {
-    return {
-      'artist': artist,
-      'title': title,
-      'tags': tags,
-      'memo': memo,
-      'link': link,
-    };
-  }
-}
-
-const List<Song> sampleSongs = [
-  Song(artist: 'N.Flying', title: '환절기', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '옥탑방', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'Flashback', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'Blue Moon', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(
-    artist: 'N.Flying',
-    title: 'Love You Like That',
-    tags: ['#오늘의한곡', '#엔플라잉'],
-  ),
-  Song(artist: 'N.Flying', title: 'Songbird', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '만년설', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '너 없는 난', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'Shooting Star', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'Preview', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '네가 내 마음에 자리 잡았다', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'Video Therapy', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '팔불출', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'Star', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'ANYWAY', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'TREE', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '피었습니다', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '폭망', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'Sober', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'Moonshot', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'FLOWER FANTASY', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '뜨거운감자', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'STARLIGHT', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '아진짜요', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'Autumn Dream', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '굿밤 (GOOD BAM)', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '놔 (Leave It)', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '봄이 부시게', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'HOW R U TODAY', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '진짜가 나타났다', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: '기가막혀', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(artist: 'N.Flying', title: 'ㅈㅅ (Pardon?)', tags: ['#오늘의한곡', '#엔플라잉']),
-  Song(
-    artist: 'Xdinary Heroes',
-    title: 'save me',
-    tags: ['#오늘의한곡', '#XdinaryHeroes'],
-  ),
-  Song(
-    artist: 'Xdinary Heroes',
-    title: 'beautiful life',
-    tags: ['#오늘의한곡', '#XdinaryHeroes'],
-  ),
-  Song(
-    artist: 'Xdinary Heroes',
-    title: 'fight me',
-    tags: ['#오늘의한곡', '#XdinaryHeroes'],
-  ),
-  Song(
-    artist: 'Xdinary Heroes',
-    title: 'ICU',
-    tags: ['#오늘의한곡', '#XdinaryHeroes'],
-  ),
-  Song(
-    artist: 'Xdinary Heroes',
-    title: 'Voyager',
-    tags: ['#오늘의한곡', '#XdinaryHeroes'],
-  ),
-  Song(
-    artist: 'Xdinary Heroes',
-    title: 'fire',
-    tags: ['#오늘의한곡', '#XdinaryHeroes'],
-  ),
-  Song(
-    artist: 'Xdinary Heroes',
-    title: 'walkin to the moon',
-    tags: ['#오늘의한곡', '#XdinaryHeroes'],
-  ),
-  Song(
-    artist: 'Xdinary Heroes',
-    title: 'love and fear',
-    tags: ['#오늘의한곡', '#XdinaryHeroes'],
-  ),
-  Song(
-    artist: 'Xdinary Heroes',
-    title: 'Lost and Found',
-    tags: ['#오늘의한곡', '#XdinaryHeroes'],
-  ),
-  Song(
-    artist: 'Xdinary Heroes',
-    title: 'We go We go',
-    tags: ['#오늘의한곡', '#XdinaryHeroes'],
-  ),
-  Song(artist: '극동 아시아 타이거즈', title: '비냄새', tags: ['#오늘의한곡', '#극동아시아타이거즈']),
-  Song(
-    artist: '극동 아시아 타이거즈',
-    title: '다시 다시 만나',
-    tags: ['#오늘의한곡', '#극동아시아타이거즈'],
-  ),
-  Song(
-    artist: '극동 아시아 타이거즈',
-    title: '흔들리는 시간 속에',
-    tags: ['#오늘의한곡', '#극동아시아타이거즈'],
-  ),
-  Song(
-    artist: '극동 아시아 타이거즈',
-    title: '시간이 지나간다면',
-    tags: ['#오늘의한곡', '#극동아시아타이거즈'],
-  ),
-  Song(
-    artist: '극동 아시아 타이거즈',
-    title: '오늘은 비가 와도 좋을 것 같아',
-    tags: ['#오늘의한곡', '#극동아시아타이거즈'],
-  ),
-  Song(artist: '극동 아시아 타이거즈', title: '면목중학교', tags: ['#오늘의한곡', '#극동아시아타이거즈']),
-  Song(artist: '극동 아시아 타이거즈', title: 'Hello', tags: ['#오늘의한곡', '#극동아시아타이거즈']),
-  Song(artist: '스킵잭', title: '재림의 날은 오지 않는다', tags: ['#오늘의한곡', '#스킵잭']),
-  Song(artist: '스킵잭', title: 'Amphetamine', tags: ['#오늘의한곡', '#스킵잭']),
-  Song(artist: '보수동쿨러', title: '0308', tags: ['#오늘의한곡', '#보수동쿨러']),
-];
-
-Map<String, List<Song>> songsByArtist(List<Song> songs) {
-  final groupedSongs = <String, List<Song>>{};
-
-  for (final song in songs) {
-    groupedSongs.putIfAbsent(song.artist, () => []).add(song);
-  }
-
-  return groupedSongs;
-}
-
 class SongStorage {
   static const String _songsKey = 'tdm_alpha_songs';
+  static const String _samplePromptCheckedKey = 'sample_prompt_checked';
+  static const String _defaultShareMessageKey = 'tdm_default_share_message';
 
   static Future<List<Song>?> loadSongs() async {
     try {
@@ -220,6 +61,42 @@ class SongStorage {
       // Prototype persistence should never crash the app.
     }
   }
+
+  static Future<bool> isSamplePromptChecked() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return preferences.getBool(_samplePromptCheckedKey) ?? false;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> setSamplePromptChecked(bool value) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool(_samplePromptCheckedKey, value);
+    } catch (_) {
+      // Prompt state should never crash the app.
+    }
+  }
+
+  static Future<String> loadDefaultShareMessage() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return preferences.getString(_defaultShareMessageKey) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static Future<void> saveDefaultShareMessage(String message) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(_defaultShareMessageKey, message);
+    } catch (_) {
+      // Settings persistence should never crash the app.
+    }
+  }
 }
 
 class TodayMusicApp extends StatelessWidget {
@@ -231,9 +108,38 @@ class TodayMusicApp extends StatelessWidget {
       title: '오늘의 한 곡',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4F6AF6)),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF4DB6AC),
+          primary: const Color(0xFF00897B),
+          surface: const Color(0xFFEEF8F6),
+        ),
+        scaffoldBackgroundColor: const Color(0xFFEEF8F6),
         useMaterial3: true,
         fontFamily: 'Roboto',
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFFEEF8F6),
+          foregroundColor: Color(0xFF004D40),
+        ),
+        checkboxTheme: CheckboxThemeData(
+          fillColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const Color(0xFF00897B);
+            }
+            return null;
+          }),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF00897B),
+            foregroundColor: Colors.white,
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF00695C),
+            side: const BorderSide(color: Color(0xFF80CBC4)),
+          ),
+        ),
       ),
       home: const TodaySongPage(),
     );
@@ -249,11 +155,12 @@ class TodaySongPage extends StatefulWidget {
 
 class _TodaySongPageState extends State<TodaySongPage> {
   final Random _random = Random();
-  List<Song> _songs = List<Song>.of(sampleSongs);
+  List<Song> _songs = [];
   final TextEditingController _shareTextController = TextEditingController();
   Song? _selectedSong;
   String _defaultShareMessage = '';
   bool _includeTodayTag = true;
+  bool _includeSongLink = true;
 
   @override
   void initState() {
@@ -269,31 +176,106 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   Future<void> _loadSavedSongs() async {
     final savedSongs = await SongStorage.loadSongs();
+    final samplePromptChecked = await SongStorage.isSamplePromptChecked();
+    final defaultShareMessage = await SongStorage.loadDefaultShareMessage();
 
-    if (!mounted || savedSongs == null) {
+    if (!mounted) {
       return;
     }
 
     setState(() {
-      _songs = savedSongs;
+      _songs = savedSongs ?? [];
       _selectedSong = null;
+      _defaultShareMessage = defaultShareMessage;
+      _includeTodayTag = true;
       _shareTextController.clear();
     });
+
+    if ((savedSongs == null || savedSongs.isEmpty) && !samplePromptChecked) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _showSampleSongsPromptDialog();
+        }
+      });
+    }
   }
 
   void _saveSongs() {
     SongStorage.saveSongs(_songs);
   }
 
+  Future<void> _showSampleSongsPromptDialog() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('안내'),
+          content: const Text(
+            '샘플곡으로 시작할까요?\n\n'
+            '오늘의 한 곡 뽑기를 바로 체험할 수 있도록\n'
+            '샘플곡 몇 곡을 추가할 수 있어요.\n\n'
+            '샘플곡은 나중에 수정하거나 삭제할 수 있습니다.',
+          ),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await SongStorage.setSamplePromptChecked(true);
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                    },
+                    child: const Text('빈 저장소', maxLines: 1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await SongStorage.setSamplePromptChecked(true);
+                      if (!mounted) {
+                        return;
+                      }
+
+                      setState(() {
+                        _songs = List<Song>.of(sampleSongs);
+                      });
+                      _saveSongs();
+
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                    },
+                    child: const Text('샘플곡', maxLines: 1),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   String _buildShareText(Song song) {
+    final link = song.link.trim();
     final tags = [
       ...visibleSongTags(song.tags),
       if (_includeTodayTag) '#오늘의한곡',
     ];
-    final lines = <String>['오늘의 한 곡 🎧', '', '${song.artist} - ${song.title}'];
+    final lines = <String>['오늘의 한 곡 🎧'];
 
     if (_defaultShareMessage.trim().isNotEmpty) {
       lines.addAll(['', _defaultShareMessage.trim()]);
+    }
+
+    lines.addAll(['', '${song.artist} - ${song.title}']);
+
+    if (_includeSongLink && link.isNotEmpty) {
+      lines.addAll(['', link]);
     }
 
     if (tags.isNotEmpty) {
@@ -309,39 +291,32 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   void _toggleTodayTag(bool? value) {
     final includeTag = value ?? false;
-    final currentText = _shareTextController.text;
-    final normalizedText = includeTag
-        ? _textWithTodayTag(currentText)
-        : _textWithoutTodayTag(currentText);
+    final selectedSong = _selectedSong;
 
     setState(() {
       _includeTodayTag = includeTag;
-      _shareTextController.text = normalizedText;
+      if (selectedSong != null) {
+        _resetShareText(selectedSong);
+      }
     });
   }
 
-  String _textWithTodayTag(String text) {
-    if (RegExp(r'(^|\s)#오늘의한곡(\s|$)').hasMatch(text)) {
-      return text;
+  void _toggleSongLink(bool? value) {
+    final selectedSong = _selectedSong;
+    if (selectedSong == null) {
+      return;
     }
 
-    if (text.trim().isEmpty) {
-      return '#오늘의한곡';
-    }
-
-    return '${text.trimRight()} #오늘의한곡';
-  }
-
-  String _textWithoutTodayTag(String text) {
-    return text
-        .replaceAll(RegExp(r'(^|\s)#오늘의한곡(?=\s|$)'), ' ')
-        .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
-        .replaceAll(RegExp(r' *\n *'), '\n')
-        .trimRight();
+    final includeLink = value ?? false;
+    setState(() {
+      _includeSongLink = includeLink;
+      _resetShareText(selectedSong);
+    });
   }
 
   void _pickRandomSong() {
     if (_songs.isEmpty) {
+      _showRootSnackBar('저장된 곡이 없어요. 노래 저장소에서 곡을 추가해주세요.');
       return;
     }
 
@@ -352,24 +327,59 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
     setState(() {
       _selectedSong = nextSong;
+      _includeSongLink = true;
       _resetShareText(nextSong);
     });
   }
 
-  Future<void> _shareCurrentText() async {
+  String? _currentShareTextOrNotify() {
     final currentText = _shareTextController.text;
     if (currentText.trim().isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('공유할 문구를 입력해주세요.')));
+      return null;
+    }
+
+    return currentText;
+  }
+
+  Future<void> _shareCurrentText() async {
+    final shareText = _currentShareTextOrNotify();
+    if (shareText == null) {
       return;
     }
 
-    final shareText = _includeTodayTag
-        ? _textWithTodayTag(currentText)
-        : _textWithoutTodayTag(currentText);
-
     await SharePlus.instance.share(ShareParams(text: shareText));
+  }
+
+  Future<void> _shareCurrentTextToX() async {
+    final shareText = _currentShareTextOrNotify();
+    if (shareText == null) {
+      return;
+    }
+
+    final uri = Uri.https('twitter.com', '/intent/tweet', {'text': shareText});
+
+    try {
+      final didLaunch = await launchUrl(uri, webOnlyWindowName: '_blank');
+
+      if (!didLaunch) {
+        _showRootSnackBar('X 공유창을 열 수 없습니다.');
+      }
+    } catch (_) {
+      _showRootSnackBar('X 공유창을 열 수 없습니다.');
+    }
+  }
+
+  Future<void> _copyCurrentShareText() async {
+    final shareText = _currentShareTextOrNotify();
+    if (shareText == null) {
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: shareText));
+    _showRootSnackBar('공유 문구가 복사되었습니다.');
   }
 
   Future<void> _openYoutubeSearch(Song song) async {
@@ -401,24 +411,91 @@ class _TodaySongPageState extends State<TodaySongPage> {
     }
   }
 
+  bool _hasSongLink(Song song) => song.link.trim().isNotEmpty;
+
+  String _songOpenButtonLabel(Song song) =>
+      _hasSongLink(song) ? '링크 열기' : '유튜브 검색';
+
+  String _compactSongOpenButtonLabel(Song song) =>
+      _hasSongLink(song) ? '링크' : '검색';
+
+  Future<void> _openSongLinkOrYoutube(Song song) async {
+    if (!_hasSongLink(song)) {
+      await _openYoutubeSearch(song);
+      return;
+    }
+
+    final rawLink = song.link.trim();
+    final normalizedLink = rawLink.contains('://')
+        ? rawLink
+        : 'https://$rawLink';
+    final uri = Uri.tryParse(normalizedLink);
+
+    if (uri == null || !uri.hasScheme) {
+      _showRootSnackBar('링크를 열 수 없습니다.');
+      return;
+    }
+
+    try {
+      final didLaunch = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+        webOnlyWindowName: '_blank',
+      );
+
+      if (!didLaunch) {
+        _showRootSnackBar('링크를 열 수 없습니다.');
+      }
+    } catch (_) {
+      _showRootSnackBar('링크를 열 수 없습니다.');
+    }
+  }
+
   Future<void> _exportSongs() async {
     if (_songs.isEmpty) {
       _showRootSnackBar('내보낼 곡이 없습니다.');
       return;
     }
 
-    await _saveExportFileToPhone();
+    await _saveExportFileToPhone(songs: _songs);
   }
 
-  Future<void> _saveExportFileToPhone() async {
+  Future<void> _exportArtistSongs(String artist) async {
+    final artistSongs = _songs.where((song) => song.artist == artist).toList();
+    if (artistSongs.isEmpty) {
+      _showRootSnackBar('내보낼 곡이 없습니다.');
+      return;
+    }
+
+    await _saveExportFileToPhone(
+      songs: artistSongs,
+      filePrefix: 'today_music_export_${_safeFileNamePart(artist)}',
+    );
+  }
+
+  String _safeFileNamePart(String value) {
+    final sanitized = value
+        .trim()
+        .replaceAll(RegExp(r'\s+'), '_')
+        .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+
+    return sanitized.isEmpty ? 'artist' : sanitized;
+  }
+
+  Future<void> _saveExportFileToPhone({
+    required List<Song> songs,
+    String filePrefix = 'today_music_export',
+  }) async {
     final timestamp = _exportTimestamp();
-    final fileName = _exportFileName(timestamp);
+    final fileName = _exportFileName(timestamp, filePrefix: filePrefix);
 
     try {
-      final exportText = _buildSongExportText(_songs);
+      final exportText = _buildSongExportText(songs);
 
       final savedPath = await FileSaver.instance.saveAs(
-        name: _exportFileBaseName(timestamp),
+        name: _exportFileBaseName(timestamp, filePrefix: filePrefix),
         bytes: Uint8List.fromList(utf8.encode(exportText)),
         fileExtension: 'txt',
         mimeType: MimeType.text,
@@ -473,12 +550,18 @@ class _TodaySongPageState extends State<TodaySongPage> {
         '${twoDigits(now.minute)}';
   }
 
-  String _exportFileBaseName(String timestamp) {
-    return 'today_music_export_$timestamp';
+  String _exportFileBaseName(
+    String timestamp, {
+    String filePrefix = 'today_music_export',
+  }) {
+    return '${filePrefix}_$timestamp';
   }
 
-  String _exportFileName(String timestamp) {
-    return '${_exportFileBaseName(timestamp)}.txt';
+  String _exportFileName(
+    String timestamp, {
+    String filePrefix = 'today_music_export',
+  }) {
+    return '${_exportFileBaseName(timestamp, filePrefix: filePrefix)}.txt';
   }
 
   String _buildSongExportText(List<Song> songs) {
@@ -501,7 +584,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
         ..writeln('가수: ${_exportSingleLine(song.artist)}')
         ..writeln('제목: ${_exportSingleLine(song.title)}')
         ..writeln('메모: ${_exportSingleLine(song.memo)}')
-        ..writeln('태그: ${_exportSingleLine(tags)}');
+        ..writeln('태그: ${_exportSingleLine(tags)}')
+        ..writeln('링크: ${_exportSingleLine(song.link)}');
     }
 
     return buffer.toString();
@@ -600,6 +684,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
             title: title,
             memo: currentFields['memo']?.trim() ?? '',
             tags: normalizeTagInput(currentFields['tags'] ?? ''),
+            link: currentFields['link']?.trim() ?? '',
           ),
         );
       }
@@ -636,6 +721,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
           currentFields['memo'] = value;
         case '태그':
           currentFields['tags'] = value;
+        case '링크':
+          currentFields['link'] = value;
       }
     }
 
@@ -687,13 +774,83 @@ class _TodaySongPageState extends State<TodaySongPage> {
               return;
             }
 
+            final trimmedMessage = message.trim();
             setState(() {
-              _defaultShareMessage = message.trim();
+              _defaultShareMessage = trimmedMessage;
+              final selectedSong = _selectedSong;
+              if (selectedSong != null) {
+                _resetShareText(selectedSong);
+              }
             });
+            SongStorage.saveDefaultShareMessage(trimmedMessage);
           },
+          onContactEmail: _openContactEmail,
+          onResetSongs: _showResetSongsDialog,
         );
       },
     );
+  }
+
+  Future<void> _openContactEmail() async {
+    final uri = Uri(
+      scheme: 'mailto',
+      queryParameters: {'subject': '오늘의 한 곡 문의'},
+    );
+
+    try {
+      final didLaunch = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!didLaunch) {
+        _showRootSnackBar('이메일 앱을 열 수 없습니다.');
+      }
+    } catch (_) {
+      _showRootSnackBar('이메일 앱을 열 수 없습니다.');
+    }
+  }
+
+  void _showResetSongsDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (confirmContext) {
+        return AlertDialog(
+          title: const Text('전체 곡을 초기화할까요?'),
+          content: const Text(
+            '저장된 곡 목록이 모두 삭제됩니다.\n'
+            '이 작업은 되돌릴 수 없습니다.\n\n'
+            '곡 목록을 보관하려면\n'
+            '초기화 전에 TXT로 내보내기 해주세요.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(confirmContext).pop(),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(confirmContext).pop();
+                _resetAllSongs();
+              },
+              child: const Text('초기화'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _resetAllSongs() {
+    setState(() {
+      _songs = [];
+      _selectedSong = null;
+      _shareTextController.clear();
+      _includeTodayTag = true;
+      _includeSongLink = true;
+    });
+    SongStorage.setSamplePromptChecked(true);
+    _saveSongs();
+    _showRootSnackBar('저장된 곡 목록을 초기화했어요.');
   }
 
   void _addSong(Song song) {
@@ -722,6 +879,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
       if (identical(_selectedSong, originalSong)) {
         _selectedSong = updatedSong;
+        _includeSongLink = true;
         _resetShareText(updatedSong);
       }
     });
@@ -753,6 +911,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       if (_selectedSong == song) {
         _selectedSong = null;
         _shareTextController.clear();
+        _includeSongLink = true;
       }
     });
     _saveSongs();
@@ -766,8 +925,69 @@ class _TodaySongPageState extends State<TodaySongPage> {
     setState(() {
       _selectedSong = null;
       _shareTextController.clear();
-      _includeTodayTag = true;
+      _includeSongLink = true;
     });
+  }
+
+  void _deleteArtistSongs(String artist) {
+    final songsToDelete = _songs
+        .where((song) => song.artist == artist)
+        .toList();
+    if (songsToDelete.isEmpty) {
+      return;
+    }
+
+    final selectedSong = _selectedSong;
+    final shouldResetResult =
+        selectedSong != null && songsToDelete.contains(selectedSong);
+
+    setState(() {
+      _songs.removeWhere((song) => song.artist == artist);
+      if (shouldResetResult) {
+        _selectedSong = null;
+        _shareTextController.clear();
+        _includeSongLink = true;
+      }
+    });
+    _saveSongs();
+    _showRootSnackBar('$artist 곡 ${songsToDelete.length}개를 삭제했어요.');
+  }
+
+  void _showDeleteArtistSongsDialog(String artist, {VoidCallback? onDeleted}) {
+    final artistSongCount = _songs
+        .where((song) => song.artist == artist)
+        .length;
+    if (artistSongCount == 0) {
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      builder: (confirmContext) {
+        return AlertDialog(
+          title: const Text('전체 삭제'),
+          content: Text(
+            '이 가수의 곡을 모두 삭제할까요?\n\n'
+            '$artist에 저장된 곡 $artistSongCount개가 모두 삭제됩니다.\n'
+            '이 작업은 되돌릴 수 없습니다.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(confirmContext).pop(),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(confirmContext).pop();
+                _deleteArtistSongs(artist);
+                onDeleted?.call();
+              },
+              child: const Text('전체 삭제'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showSongStorageSheet() {
@@ -809,37 +1029,32 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      FilledButton(
-                        onPressed: () {
-                          _showAddSongDialog(
-                            onSongAdded: () => refreshSheet(() {}),
-                          );
-                        },
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                        ),
-                        child: const Text('곡 추가하기'),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: _exportSongs,
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                        ),
-                        child: const Text('내보내기'),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: () {
-                          _importSongs(
-                            onSongsImported: () => refreshSheet(() {}),
-                          );
-                        },
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                        ),
-                        child: const Text('불러오기'),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilledButton(
+                            onPressed: () {
+                              _showAddSongDialog(
+                                onSongAdded: () => refreshSheet(() {}),
+                              );
+                            },
+                            child: const Text('곡 추가'),
+                          ),
+                          OutlinedButton(
+                            onPressed: _exportSongs,
+                            child: const Text('내보내기'),
+                          ),
+                          OutlinedButton(
+                            onPressed: () {
+                              _importSongs(
+                                onSongsImported: () => refreshSheet(() {}),
+                              );
+                            },
+                            child: const Text('불러오기'),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 20),
                       ...groupedSongs.entries.map(
@@ -909,6 +1124,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
             final songs = _songs
                 .where((song) => song.artist == artist)
                 .toList();
+            final compactButtonStyle = TextButton.styleFrom(
+              minimumSize: const Size(40, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              textStyle: const TextStyle(fontSize: 12),
+            );
 
             return AlertDialog(
               title: Text('$artist 곡 목록'),
@@ -922,68 +1144,116 @@ class _TodaySongPageState extends State<TodaySongPage> {
                     shrinkWrap: true,
                     itemCount: songs.length,
                     separatorBuilder: (context, index) =>
-                        const Divider(height: 16),
+                        const Divider(height: 10),
                     itemBuilder: (context, index) {
                       final song = songs[index];
+                      final hasLink = _hasSongLink(song);
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            song.title,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                song.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 4,
-                            runSpacing: 4,
-                            children: [
-                              TextButton(
-                                onPressed: () => _openYoutubeSearch(song),
-                                child: const Text('유튜브 검색'),
+                            const SizedBox(width: 8),
+                            TextButton(
+                              onPressed: () => _openSongLinkOrYoutube(song),
+                              style: compactButtonStyle,
+                              child: Text(
+                                _compactSongOpenButtonLabel(song),
+                                style: TextStyle(
+                                  color: hasLink
+                                      ? const Color(0xFF2679A8)
+                                      : null,
+                                  fontWeight: hasLink
+                                      ? FontWeight.w800
+                                      : FontWeight.w500,
+                                ),
                               ),
-                              TextButton(
-                                onPressed: () {
-                                  _showEditSongDialog(
-                                    song,
-                                    onSongUpdated: () {
-                                      refreshDialog(() {});
-                                      onSongChanged?.call();
-                                    },
-                                  );
-                                },
-                                child: const Text('수정'),
-                              ),
-                              TextButton(
-                                onPressed: () {
-                                  _showDeleteSongDialog(
-                                    song,
-                                    onDeleted: () {
-                                      if (songs.length == 1) {
-                                        Navigator.of(dialogContext).pop();
-                                      }
-                                      refreshDialog(() {});
-                                      onSongChanged?.call();
-                                    },
-                                  );
-                                },
-                                child: const Text('삭제'),
-                              ),
-                            ],
-                          ),
-                        ],
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                _showEditSongDialog(
+                                  song,
+                                  onSongUpdated: () {
+                                    refreshDialog(() {});
+                                    onSongChanged?.call();
+                                  },
+                                );
+                              },
+                              style: compactButtonStyle,
+                              child: const Text('수정'),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                _showDeleteSongDialog(
+                                  song,
+                                  onDeleted: () {
+                                    if (songs.length == 1) {
+                                      Navigator.of(dialogContext).pop();
+                                    }
+                                    refreshDialog(() {});
+                                    onSongChanged?.call();
+                                  },
+                                );
+                              },
+                              style: compactButtonStyle,
+                              child: const Text('삭제'),
+                            ),
+                          ],
+                        ),
                       );
                     },
                   ),
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('닫기'),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => _exportArtistSongs(artist),
+                            child: const Text('목록 내보내기', maxLines: 1),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              _showDeleteArtistSongsDialog(
+                                artist,
+                                onDeleted: () {
+                                  Navigator.of(dialogContext).pop();
+                                  onSongChanged?.call();
+                                },
+                              );
+                            },
+                            child: const Text('목록 삭제', maxLines: 1),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.center,
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: const Text('닫기', maxLines: 1),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             );
@@ -1070,30 +1340,73 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                   return;
                                 }
 
-                                _openYoutubeSearch(selectedSong);
+                                _openSongLinkOrYoutube(selectedSong);
                               },
                               style: OutlinedButton.styleFrom(
                                 minimumSize: const Size.fromHeight(48),
                               ),
-                              child: const Text('유튜브 검색'),
+                              child: Text(_songOpenButtonLabel(_selectedSong!)),
                             ),
                             const SizedBox(height: 24),
                             ShareTextEditor(controller: _shareTextController),
-                            CheckboxListTile(
-                              value: _includeTodayTag,
-                              onChanged: _toggleTodayTag,
-                              title: const Text('#오늘의한곡 포함'),
-                              contentPadding: EdgeInsets.zero,
-                              controlAffinity: ListTileControlAffinity.leading,
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 0,
+                              children: [
+                                if (_selectedSong != null &&
+                                    _hasSongLink(_selectedSong!))
+                                  _CompactShareCheck(
+                                    value: _includeSongLink,
+                                    onChanged: _toggleSongLink,
+                                    label: '링크 포함',
+                                  ),
+                                _CompactShareCheck(
+                                  value: _includeTodayTag,
+                                  onChanged: _toggleTodayTag,
+                                  label: '#오늘의한곡 포함',
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 12),
-                            OutlinedButton(
-                              onPressed: _shareCurrentText,
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(48),
+                            const SizedBox(height: 10),
+                            if (kIsWeb) ...[
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: _shareCurrentTextToX,
+                                      style: OutlinedButton.styleFrom(
+                                        minimumSize: const Size.fromHeight(44),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                        ),
+                                      ),
+                                      child: const Text('X에 공유하기', maxLines: 1),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: _copyCurrentShareText,
+                                      style: OutlinedButton.styleFrom(
+                                        minimumSize: const Size.fromHeight(44),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                        ),
+                                      ),
+                                      child: const Text('문구 복사하기', maxLines: 1),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              child: const Text('공유하기'),
-                            ),
+                            ] else
+                              OutlinedButton(
+                                onPressed: _shareCurrentText,
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(48),
+                                ),
+                                child: const Text('공유하기'),
+                              ),
                           ] else ...[
                             const SizedBox(height: 32),
                             _PickSongButton(
@@ -1214,11 +1527,15 @@ class ArtistSongGroupTile extends StatelessWidget {
 class SettingsDialog extends StatefulWidget {
   final String initialDefaultMessage;
   final ValueChanged<String> onSave;
+  final VoidCallback onContactEmail;
+  final VoidCallback onResetSongs;
 
   const SettingsDialog({
     super.key,
     required this.initialDefaultMessage,
     required this.onSave,
+    required this.onContactEmail,
+    required this.onResetSongs,
   });
 
   @override
@@ -1251,20 +1568,36 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('설정'),
-      content: TextField(
-        controller: _defaultMessageController,
-        maxLines: 3,
-        decoration: const InputDecoration(
-          labelText: '기본 메시지',
-          border: OutlineInputBorder(),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _defaultMessageController,
+              minLines: 1,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: '공유 기본 메시지',
+                hintText: '예: 오늘의 한 곡 🎧',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const Divider(height: 28),
+            OutlinedButton(
+              onPressed: widget.onContactEmail,
+              child: const Text('이메일로 문의하기'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: widget.onResetSongs,
+              child: const Text('전체 곡 초기화'),
+            ),
+          ],
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: _defaultMessageController.clear,
-          child: const Text('비우기'),
-        ),
-        TextButton(
+        OutlinedButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('닫기'),
         ),
@@ -1372,6 +1705,7 @@ class _AddSongDialogState extends State<AddSongDialog> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _memoController = TextEditingController();
   final TextEditingController _tagsController = TextEditingController();
+  final TextEditingController _linkController = TextEditingController();
   String _artistName = '';
   String? _artistErrorText;
   String? _titleErrorText;
@@ -1390,6 +1724,7 @@ class _AddSongDialogState extends State<AddSongDialog> {
     _titleController.text = initialSong.title;
     _memoController.text = initialSong.memo;
     _tagsController.text = initialSong.tags.join(' ');
+    _linkController.text = initialSong.link;
   }
 
   @override
@@ -1397,6 +1732,7 @@ class _AddSongDialogState extends State<AddSongDialog> {
     _titleController.dispose();
     _memoController.dispose();
     _tagsController.dispose();
+    _linkController.dispose();
     super.dispose();
   }
 
@@ -1422,7 +1758,7 @@ class _AddSongDialogState extends State<AddSongDialog> {
       title: title,
       tags: tags,
       memo: _memoController.text.trim(),
-      link: widget.initialSong?.link ?? '',
+      link: _linkController.text.trim(),
     );
 
     if (_hasDuplicateSong(artist: artist, title: title)) {
@@ -1533,6 +1869,15 @@ class _AddSongDialogState extends State<AddSongDialog> {
               ),
               const SizedBox(height: 12),
               HashTagTextField(controller: _tagsController),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _linkController,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: '링크',
+                  border: OutlineInputBorder(),
+                ),
+              ),
             ],
           ),
         ),
@@ -1680,7 +2025,7 @@ class ShareTextEditor extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(8),
@@ -1689,15 +2034,33 @@ class ShareTextEditor extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '공유 문구',
-            style: TextStyle(
-              color: colorScheme.onSurfaceVariant,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            children: [
+              Text(
+                '공유 문구',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: controller,
+                builder: (context, value, child) {
+                  return Text(
+                    '${value.text.characters.length}자',
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           TextField(
             controller: controller,
             minLines: 5,
@@ -1714,6 +2077,54 @@ class ShareTextEditor extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CompactShareCheck extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool?> onChanged;
+  final String label;
+
+  const _CompactShareCheck({
+    required this.value,
+    required this.onChanged,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 32,
+              height: 32,
+              child: Checkbox(
+                value: value,
+                onChanged: onChanged,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
