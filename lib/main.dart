@@ -2218,8 +2218,6 @@ class SponsorBottomBanner extends StatelessWidget {
         height: 80,
         child: Material(
           color: colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(8),
-          clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: hasLink ? onTap : null,
             child: _SponsorAdImage(imageUrl: ad.imageUrl),
