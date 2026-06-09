@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'sample_songs.dart';
 import 'song.dart';
+import 'sponsor_ad.dart';
 
 void main() {
   runApp(const TodayMusicApp());
@@ -158,6 +159,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   List<Song> _songs = [];
   final TextEditingController _shareTextController = TextEditingController();
   Song? _selectedSong;
+  SponsorAd _bottomAd = fallbackBottomAd;
   String _defaultShareMessage = '';
   bool _includeTodayTag = true;
   bool _includeSongLink = true;
@@ -166,6 +168,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   void initState() {
     super.initState();
     _loadSavedSongs();
+    _loadBottomAd();
   }
 
   @override
@@ -202,6 +205,17 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   void _saveSongs() {
     SongStorage.saveSongs(_songs);
+  }
+
+  Future<void> _loadBottomAd() async {
+    final bottomAd = await loadBottomSponsorAd();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _bottomAd = bottomAd;
+    });
   }
 
   Future<void> _showSampleSongsPromptDialog() async {
@@ -426,6 +440,37 @@ class _TodaySongPageState extends State<TodaySongPage> {
     }
 
     final rawLink = song.link.trim();
+    final normalizedLink = rawLink.contains('://')
+        ? rawLink
+        : 'https://$rawLink';
+    final uri = Uri.tryParse(normalizedLink);
+
+    if (uri == null || !uri.hasScheme) {
+      _showRootSnackBar('링크를 열 수 없습니다.');
+      return;
+    }
+
+    try {
+      final didLaunch = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+        webOnlyWindowName: '_blank',
+      );
+
+      if (!didLaunch) {
+        _showRootSnackBar('링크를 열 수 없습니다.');
+      }
+    } catch (_) {
+      _showRootSnackBar('링크를 열 수 없습니다.');
+    }
+  }
+
+  Future<void> _openSponsorAdLink(SponsorAd ad) async {
+    final rawLink = ad.linkUrl.trim();
+    if (rawLink.isEmpty) {
+      return;
+    }
+
     final normalizedLink = rawLink.contains('://')
         ? rawLink
         : 'https://$rawLink';
@@ -1426,7 +1471,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
         bottomNavigationBar: SafeArea(
           top: false,
           child: Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               border: Border(
@@ -1435,20 +1480,32 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 ),
               ),
             ),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _showSongStorageSheet,
-                    child: const Text('노래 저장소'),
+                if (_bottomAd.enabled) ...[
+                  SponsorBottomBanner(
+                    ad: _bottomAd,
+                    onTap: () => _openSponsorAdLink(_bottomAd),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _showSettingsDialog,
-                    child: const Text('설정'),
-                  ),
+                  const SizedBox(height: 10),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _showSongStorageSheet,
+                        child: const Text('노래 저장소'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _showSettingsDialog,
+                        child: const Text('설정'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -2127,6 +2184,77 @@ class _CompactShareCheck extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class SponsorBottomBanner extends StatelessWidget {
+  final SponsorAd ad;
+  final VoidCallback onTap;
+
+  const SponsorBottomBanner({super.key, required this.ad, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasLink = ad.linkUrl.trim().isNotEmpty;
+    final label = [
+      ad.title.trim(),
+      ad.message.trim(),
+    ].where((text) => text.isNotEmpty).join(' ');
+
+    return Semantics(
+      button: hasLink,
+      label: label.isEmpty ? '홍보 배너' : label,
+      child: Material(
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: hasLink ? onTap : null,
+          child: AspectRatio(
+            aspectRatio: 6,
+            child: _SponsorAdImage(imageUrl: ad.imageUrl),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SponsorAdImage extends StatelessWidget {
+  final String imageUrl;
+
+  const _SponsorAdImage({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrl.trim().isEmpty) {
+      return const _FallbackSponsorAdImage();
+    }
+
+    return Image.network(
+      imageUrl.trim(),
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return const _FallbackSponsorAdImage();
+      },
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) {
+          return child;
+        }
+
+        return const _FallbackSponsorAdImage();
+      },
+    );
+  }
+}
+
+class _FallbackSponsorAdImage extends StatelessWidget {
+  const _FallbackSponsorAdImage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(fallbackBottomAdAssetPath, fit: BoxFit.cover);
   }
 }
 
