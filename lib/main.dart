@@ -1480,34 +1480,40 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 ),
               ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_bottomAd.enabled) ...[
-                  SponsorBottomBanner(
-                    ad: _bottomAd,
-                    onTap: () => _openSponsorAdLink(_bottomAd),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                Row(
+            child: Align(
+              alignment: Alignment.center,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _showSongStorageSheet,
-                        child: const Text('노래 저장소'),
+                    if (_bottomAd.enabled) ...[
+                      SponsorBottomBanner(
+                        ad: _bottomAd,
+                        onTap: () => _openSponsorAdLink(_bottomAd),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _showSettingsDialog,
-                        child: const Text('설정'),
-                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _showSongStorageSheet,
+                            child: const Text('노래 저장소'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _showSettingsDialog,
+                            child: const Text('설정'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -2205,14 +2211,15 @@ class SponsorBottomBanner extends StatelessWidget {
     return Semantics(
       button: hasLink,
       label: label.isEmpty ? '홍보 배너' : label,
-      child: Material(
-        color: colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(8),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: hasLink ? onTap : null,
-          child: AspectRatio(
-            aspectRatio: 6,
+      child: SizedBox(
+        width: double.infinity,
+        height: 80,
+        child: Material(
+          color: colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(8),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: hasLink ? onTap : null,
             child: _SponsorAdImage(imageUrl: ad.imageUrl),
           ),
         ),
