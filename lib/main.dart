@@ -1480,7 +1480,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
               ),
             ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
               child: Center(
                 heightFactor: 1,
                 child: ConstrainedBox(
@@ -2215,12 +2215,14 @@ class SponsorBottomBanner extends StatelessWidget {
       label: label.isEmpty ? '홍보 배너' : label,
       child: SizedBox(
         width: double.infinity,
-        height: 80,
-        child: Material(
-          color: colorScheme.surfaceContainerHigh,
-          child: InkWell(
-            onTap: hasLink ? onTap : null,
-            child: _SponsorAdImage(imageUrl: ad.imageUrl),
+        child: AspectRatio(
+          aspectRatio: 6 / 1,
+          child: Material(
+            color: colorScheme.surfaceContainerHigh,
+            child: InkWell(
+              onTap: hasLink ? onTap : null,
+              child: _SponsorAdImage(imageUrl: ad.imageUrl),
+            ),
           ),
         ),
       ),
