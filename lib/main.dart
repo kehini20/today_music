@@ -160,6 +160,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   final TextEditingController _shareTextController = TextEditingController();
   Song? _selectedSong;
   SponsorAd _bottomAd = fallbackBottomAd;
+  MainSponsorAd _mainAd = fallbackMainAd;
   String _defaultShareMessage = '';
   bool _includeTodayTag = true;
   bool _includeSongLink = true;
@@ -168,7 +169,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   void initState() {
     super.initState();
     _loadSavedSongs();
-    _loadBottomAd();
+    _loadSponsorAds();
   }
 
   @override
@@ -207,14 +208,21 @@ class _TodaySongPageState extends State<TodaySongPage> {
     SongStorage.saveSongs(_songs);
   }
 
-  Future<void> _loadBottomAd() async {
-    final bottomAd = await loadBottomSponsorAd();
+  Future<void> _loadSponsorAds() async {
+    final config = await loadSponsorAdConfig();
     if (!mounted) {
       return;
     }
 
     setState(() {
-      _bottomAd = bottomAd;
+      _bottomAd = config.bottomAd;
+      final mainAd = config.mainAd;
+      if (mainAd == null) {
+        debugPrint('MainSponsorAd is null: fallback main panel selected.');
+      } else if (!mainAd.enabled) {
+        debugPrint('MainSponsorAd is disabled: fallback main panel selected.');
+      }
+      _mainAd = mainAd != null && mainAd.enabled ? mainAd : fallbackMainAd;
     });
   }
 
@@ -346,6 +354,20 @@ class _TodaySongPageState extends State<TodaySongPage> {
     });
   }
 
+  void _pickMainSponsorSong() {
+    final sponsorSong = _mainAd.song;
+    if (sponsorSong == null) {
+      _showRootSnackBar('추천곡 정보가 아직 없습니다.');
+      return;
+    }
+
+    setState(() {
+      _selectedSong = sponsorSong;
+      _includeSongLink = true;
+      _resetShareText(sponsorSong);
+    });
+  }
+
   String? _currentShareTextOrNotify() {
     final currentText = _shareTextController.text;
     if (currentText.trim().isEmpty) {
@@ -466,7 +488,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   Future<void> _openSponsorAdLink(SponsorAd ad) async {
-    final rawLink = ad.linkUrl.trim();
+    await _openSponsorLink(ad.linkUrl);
+  }
+
+  Future<void> _openSponsorLink(String linkUrl) async {
+    final rawLink = linkUrl.trim();
     if (rawLink.isEmpty) {
       return;
     }
@@ -1453,10 +1479,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 child: const Text('공유하기'),
                               ),
                           ] else ...[
-                            const SizedBox(height: 32),
-                            _PickSongButton(
-                              label: '오늘의 한 곡 뽑기',
-                              onPressed: _pickRandomSong,
+                            const SizedBox(height: 24),
+                            MainSponsorPanel(
+                              ad: _mainAd,
+                              onOpenLink: () =>
+                                  _openSponsorLink(_mainAd.linkUrl),
+                              onPickSponsorSong: _pickMainSponsorSong,
+                              onPickRandomSong: _pickRandomSong,
                             ),
                           ],
                         ],
@@ -2195,6 +2224,96 @@ class _CompactShareCheck extends StatelessWidget {
   }
 }
 
+class MainSponsorPanel extends StatelessWidget {
+  final MainSponsorAd ad;
+  final VoidCallback onOpenLink;
+  final VoidCallback onPickSponsorSong;
+  final VoidCallback onPickRandomSong;
+
+  const MainSponsorPanel({
+    super.key,
+    required this.ad,
+    required this.onOpenLink,
+    required this.onPickSponsorSong,
+    required this.onPickRandomSong,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasLink = ad.linkUrl.trim().isNotEmpty;
+    final hasMessage = ad.message.trim().isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            button: hasLink,
+            label: hasMessage ? ad.message : '메인 홍보 이미지',
+            child: Material(
+              color: colorScheme.surface,
+              child: InkWell(
+                onTap: hasLink ? onOpenLink : null,
+                child: AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: _SponsorAdImage(
+                    imageUrl: ad.imageUrl,
+                    fallbackAssetPath: ad.fallbackAsset,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (hasMessage) ...[
+            const SizedBox(height: 10),
+            Text(
+              '후원자 픽',
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              ad.message,
+              maxLines: 5,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontSize: 14,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton(
+                onPressed: onPickSponsorSong,
+                child: const Text('오늘의 추천곡 뽑기', maxLines: 1),
+              ),
+              OutlinedButton(
+                onPressed: onPickRandomSong,
+                child: const Text('오늘의 한 곡 뽑기', maxLines: 1),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class SponsorBottomBanner extends StatelessWidget {
   final SponsorAd ad;
   final VoidCallback onTap;
@@ -2221,7 +2340,10 @@ class SponsorBottomBanner extends StatelessWidget {
             color: colorScheme.surfaceContainerHigh,
             child: InkWell(
               onTap: hasLink ? onTap : null,
-              child: _SponsorAdImage(imageUrl: ad.imageUrl),
+              child: _SponsorAdImage(
+                imageUrl: ad.imageUrl,
+                fallbackAssetPath: fallbackBottomAdAssetPath,
+              ),
             ),
           ),
         ),
@@ -2232,13 +2354,17 @@ class SponsorBottomBanner extends StatelessWidget {
 
 class _SponsorAdImage extends StatelessWidget {
   final String imageUrl;
+  final String fallbackAssetPath;
 
-  const _SponsorAdImage({required this.imageUrl});
+  const _SponsorAdImage({
+    required this.imageUrl,
+    required this.fallbackAssetPath,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (imageUrl.trim().isEmpty) {
-      return const _FallbackSponsorAdImage();
+      return _FallbackSponsorAdImage(assetPath: fallbackAssetPath);
     }
 
     return Image.network(
@@ -2246,25 +2372,38 @@ class _SponsorAdImage extends StatelessWidget {
       fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) {
         debugPrint('SponsorAd image load error: ${imageUrl.trim()} / $error');
-        return const _FallbackSponsorAdImage();
+        return _FallbackSponsorAdImage(assetPath: fallbackAssetPath);
       },
       loadingBuilder: (context, child, loadingProgress) {
         if (loadingProgress == null) {
           return child;
         }
 
-        return const _FallbackSponsorAdImage();
+        return _FallbackSponsorAdImage(assetPath: fallbackAssetPath);
       },
     );
   }
 }
 
 class _FallbackSponsorAdImage extends StatelessWidget {
-  const _FallbackSponsorAdImage();
+  final String assetPath;
+
+  const _FallbackSponsorAdImage({required this.assetPath});
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(fallbackBottomAdAssetPath, fit: BoxFit.contain);
+    return Image.asset(
+      assetPath,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) {
+        if (assetPath == fallbackBottomAdAssetPath) {
+          return const SizedBox.shrink();
+        }
+
+        debugPrint('SponsorAd fallback asset load error: $assetPath / $error');
+        return Image.asset(fallbackBottomAdAssetPath, fit: BoxFit.contain);
+      },
+    );
   }
 }
 
