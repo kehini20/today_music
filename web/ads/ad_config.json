@@ -1,23 +1,46 @@
 {
-    "mainAd": {
-    "enabled": true,
-    "title": "오늘의 추천곡",
-    "message": "오늘은 이 곡을 추천해요. 공연장에서 같이 부르면 더 좋은 곡이에요.",
-    "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_001.png",
-    "linkUrl": "https://youtu.be/99arhk9wdNE?si=8o1xkN0nfi8JYmJU",
-    "song": {
-      "artist": "N.Flying",
-      "title": "환절기",
-      "memo": "후원자 추천곡",
-      "tags": "밴드,추천",
-      "link": "https://youtu.be/99arhk9wdNE?si=8o1xkN0nfi8JYmJU"
+  "mainAds": [
+    {
+      "id": "main_active_test_001",
+      "slot": 1,
+      "enabled": true,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-06-11T23:59:59+09:00",
+      "title": "오늘의 추천곡",
+      "message": "현재 노출 중인 메인 광고 테스트입니다.",
+      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_001.png",
+      "linkUrl": "https://youtu.be/99arhk9wdNE?si=8o1xkN0nfi8JYmJU",
+      "song": {
+        "artist": "N.Flying",
+        "title": "환절기",
+        "memo": "후원자 추천곡",
+        "tags": "밴드,추천",
+        "link": "https://youtu.be/99arhk9wdNE?si=8o1xkN0nfi8JYmJU"
+      }
+    },
+    {
+      "id": "main_future_test_002",
+      "slot": 2,
+      "enabled": true,
+      "startAt": "2026-12-01T00:00:00+09:00",
+      "endAt": "2026-12-02T23:59:59+09:00",
+      "title": "미래 광고",
+      "message": "아직 보이면 안 되는 광고입니다.",
+      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_001.png",
+      "linkUrl": ""
     }
-  },
-  "bottomAd": {
-    "enabled": true,
-    "title": "오늘의 한 곡",
-    "message": "오늘도 한 곡 뽑아볼까요?",
-    "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_001.png",
-    "linkUrl": "https://x.com/NFlyingofficial"
-  }
+  ],
+  "bottomAds": [
+    {
+      "id": "bottom_active_test_001",
+      "slot": 1,
+      "enabled": true,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-06-11T23:59:59+09:00",
+      "title": "오늘의 한 곡",
+      "message": "오늘도 한 곡 뽑아볼까요?",
+      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_001.png",
+      "linkUrl": "https://x.com/NFlyingofficial"
+    }
+  ]
 }

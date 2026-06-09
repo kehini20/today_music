@@ -14,6 +14,10 @@ const String fallbackBottomAdAssetPath =
 const String fallbackMainAdAssetPath = 'assets/ads/ad_tdm_main.png';
 
 class SponsorAd {
+  final String id;
+  final String slot;
+  final String startAt;
+  final String endAt;
   final bool enabled;
   final String title;
   final String message;
@@ -21,6 +25,10 @@ class SponsorAd {
   final String linkUrl;
 
   const SponsorAd({
+    this.id = '',
+    this.slot = '',
+    this.startAt = '',
+    this.endAt = '',
     required this.enabled,
     required this.title,
     required this.message,
@@ -30,6 +38,10 @@ class SponsorAd {
 
   factory SponsorAd.fromJson(Map<String, Object?> json) {
     return SponsorAd(
+      id: json['id']?.toString().trim() ?? '',
+      slot: json['slot']?.toString().trim() ?? '',
+      startAt: json['startAt']?.toString().trim() ?? '',
+      endAt: json['endAt']?.toString().trim() ?? '',
       enabled: json['enabled'] == true,
       title: json['title']?.toString().trim() ?? '',
       message: json['message']?.toString().trim() ?? '',
@@ -40,6 +52,10 @@ class SponsorAd {
 }
 
 class MainSponsorAd {
+  final String id;
+  final String slot;
+  final String startAt;
+  final String endAt;
   final bool enabled;
   final String imageUrl;
   final String fallbackAsset;
@@ -48,6 +64,10 @@ class MainSponsorAd {
   final Song? song;
 
   const MainSponsorAd({
+    this.id = '',
+    this.slot = '',
+    this.startAt = '',
+    this.endAt = '',
     required this.enabled,
     required this.imageUrl,
     required this.fallbackAsset,
@@ -58,6 +78,10 @@ class MainSponsorAd {
 
   factory MainSponsorAd.fromJson(Map<String, Object?> json) {
     return MainSponsorAd(
+      id: json['id']?.toString().trim() ?? '',
+      slot: json['slot']?.toString().trim() ?? '',
+      startAt: json['startAt']?.toString().trim() ?? '',
+      endAt: json['endAt']?.toString().trim() ?? '',
       enabled: json['enabled'] == true,
       imageUrl: json['imageUrl']?.toString().trim() ?? '',
       fallbackAsset:
@@ -121,23 +145,9 @@ Future<SponsorAdConfig> loadSponsorAdConfig({
       return const SponsorAdConfig(bottomAd: fallbackBottomAd, mainAd: null);
     }
 
-    final bottomAdJson = decoded['bottomAd'];
-    final bottomAd = bottomAdJson is Map
-        ? SponsorAd.fromJson(Map<String, Object?>.from(bottomAdJson))
-        : fallbackBottomAd;
-
-    if (bottomAdJson is! Map) {
-      debugPrint('SponsorAd bottomAd missing or not Map: $configUrl');
-    }
-
-    final mainAdJson = decoded['mainAd'];
-    final mainAd = mainAdJson is Map
-        ? MainSponsorAd.fromJson(Map<String, Object?>.from(mainAdJson))
-        : null;
-
-    if (mainAdJson is! Map) {
-      debugPrint('MainSponsorAd missing: fallback main panel will be used.');
-    }
+    final now = DateTime.now();
+    final bottomAd = _selectBottomAd(decoded, now, configUrl);
+    final mainAd = _selectMainAd(decoded, now);
 
     debugPrint(
       'SponsorAd loaded: enabled=${bottomAd.enabled}, imageUrl=${bottomAd.imageUrl}',
@@ -161,6 +171,275 @@ Future<SponsorAdConfig> loadSponsorAdConfig({
 Future<SponsorAd> loadBottomSponsorAd({String configUrl = adConfigUrl}) async {
   final config = await loadSponsorAdConfig(configUrl: configUrl);
   return config.bottomAd;
+}
+
+SponsorAd _selectBottomAd(
+  Map<dynamic, dynamic> decoded,
+  DateTime now,
+  String configUrl,
+) {
+  final bottomAdsJson = decoded['bottomAds'];
+  if (bottomAdsJson is List) {
+    final candidates = _parseBottomAds(bottomAdsJson);
+    final activeAds = candidates
+        .where(
+          (ad) => _isAdActive(
+            enabled: ad.enabled,
+            id: ad.id,
+            slot: ad.slot,
+            startAt: ad.startAt,
+            endAt: ad.endAt,
+            now: now,
+            logPrefix: 'bottomAd',
+          ),
+        )
+        .take(3)
+        .toList();
+
+    if (activeAds.isEmpty) {
+      debugPrint(
+        'bottomAds active candidate missing: fallback bottomAd selected.',
+      );
+      return fallbackBottomAd;
+    }
+
+    final selected = activeAds[_selectionIndex(activeAds.length, now)];
+    _logSelectedAd(
+      logPrefix: 'bottomAd',
+      id: selected.id,
+      slot: selected.slot,
+      startAt: selected.startAt,
+      endAt: selected.endAt,
+    );
+    return selected;
+  }
+
+  final bottomAdJson = decoded['bottomAd'];
+  final bottomAd = bottomAdJson is Map
+      ? SponsorAd.fromJson(Map<String, Object?>.from(bottomAdJson))
+      : fallbackBottomAd;
+
+  if (bottomAdJson is! Map) {
+    debugPrint('SponsorAd bottomAd missing or not Map: $configUrl');
+  }
+
+  _logSingleAdState(
+    logPrefix: 'bottomAd',
+    id: bottomAd.id,
+    slot: bottomAd.slot,
+    startAt: bottomAd.startAt,
+    endAt: bottomAd.endAt,
+    enabled: bottomAd.enabled,
+  );
+  if (_hasSchedule(bottomAd.startAt, bottomAd.endAt) &&
+      !_isAdActive(
+        enabled: bottomAd.enabled,
+        id: bottomAd.id,
+        slot: bottomAd.slot,
+        startAt: bottomAd.startAt,
+        endAt: bottomAd.endAt,
+        now: now,
+        logPrefix: 'bottomAd',
+      )) {
+    debugPrint(
+      'bottomAd single inactive by schedule: fallback bottomAd selected.',
+    );
+    return fallbackBottomAd;
+  }
+
+  return bottomAd;
+}
+
+MainSponsorAd? _selectMainAd(Map<dynamic, dynamic> decoded, DateTime now) {
+  final mainAdsJson = decoded['mainAds'];
+  if (mainAdsJson is List) {
+    final candidates = _parseMainAds(mainAdsJson);
+    final activeAds = candidates
+        .where(
+          (ad) => _isAdActive(
+            enabled: ad.enabled,
+            id: ad.id,
+            slot: ad.slot,
+            startAt: ad.startAt,
+            endAt: ad.endAt,
+            now: now,
+            logPrefix: 'mainAd',
+          ),
+        )
+        .take(3)
+        .toList();
+
+    if (activeAds.isEmpty) {
+      debugPrint(
+        'mainAds active candidate missing: fallback main panel will be used.',
+      );
+      return null;
+    }
+
+    final selected = activeAds[_selectionIndex(activeAds.length, now)];
+    _logSelectedAd(
+      logPrefix: 'mainAd',
+      id: selected.id,
+      slot: selected.slot,
+      startAt: selected.startAt,
+      endAt: selected.endAt,
+    );
+    return selected;
+  }
+
+  final mainAdJson = decoded['mainAd'];
+  if (mainAdJson is! Map) {
+    debugPrint('MainSponsorAd missing: fallback main panel will be used.');
+    return null;
+  }
+
+  final mainAd = MainSponsorAd.fromJson(Map<String, Object?>.from(mainAdJson));
+
+  _logSingleAdState(
+    logPrefix: 'mainAd',
+    id: mainAd.id,
+    slot: mainAd.slot,
+    startAt: mainAd.startAt,
+    endAt: mainAd.endAt,
+    enabled: mainAd.enabled,
+  );
+  if (_hasSchedule(mainAd.startAt, mainAd.endAt) &&
+      !_isAdActive(
+        enabled: mainAd.enabled,
+        id: mainAd.id,
+        slot: mainAd.slot,
+        startAt: mainAd.startAt,
+        endAt: mainAd.endAt,
+        now: now,
+        logPrefix: 'mainAd',
+      )) {
+    debugPrint(
+      'mainAd single inactive by schedule: fallback main panel will be used.',
+    );
+    return null;
+  }
+
+  return mainAd;
+}
+
+List<SponsorAd> _parseBottomAds(List<dynamic> rawAds) {
+  final ads = <SponsorAd>[];
+  for (final rawAd in rawAds) {
+    if (rawAd is! Map) {
+      debugPrint('bottomAds item skipped: not Map');
+      continue;
+    }
+
+    try {
+      ads.add(SponsorAd.fromJson(Map<String, Object?>.from(rawAd)));
+    } catch (error) {
+      debugPrint('bottomAds item parse failed: $error');
+    }
+  }
+  return ads;
+}
+
+List<MainSponsorAd> _parseMainAds(List<dynamic> rawAds) {
+  final ads = <MainSponsorAd>[];
+  for (final rawAd in rawAds) {
+    if (rawAd is! Map) {
+      debugPrint('mainAds item skipped: not Map');
+      continue;
+    }
+
+    try {
+      ads.add(MainSponsorAd.fromJson(Map<String, Object?>.from(rawAd)));
+    } catch (error) {
+      debugPrint('mainAds item parse failed: $error');
+    }
+  }
+  return ads;
+}
+
+bool _isAdActive({
+  required bool enabled,
+  required String id,
+  required String slot,
+  required String startAt,
+  required String endAt,
+  required DateTime now,
+  required String logPrefix,
+}) {
+  var active = enabled;
+
+  final start = _parseAdDate(startAt, '$logPrefix startAt', id);
+  final end = _parseAdDate(endAt, '$logPrefix endAt', id);
+
+  if (enabled && start == null && startAt.trim().isNotEmpty) {
+    active = false;
+  }
+  if (enabled && end == null && endAt.trim().isNotEmpty) {
+    active = false;
+  }
+  if (active && start != null && now.isBefore(start)) {
+    active = false;
+  }
+  if (active && end != null && now.isAfter(end)) {
+    active = false;
+  }
+
+  debugPrint(
+    '$logPrefix candidate: id=$id, slot=$slot, startAt=$startAt, endAt=$endAt, active=$active',
+  );
+  return active;
+}
+
+DateTime? _parseAdDate(String value, String fieldName, String id) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    return null;
+  }
+
+  try {
+    return DateTime.parse(trimmed);
+  } catch (error) {
+    debugPrint(
+      'SponsorAd date parse failed: id=$id, field=$fieldName, value=$trimmed, error=$error',
+    );
+    return null;
+  }
+}
+
+int _selectionIndex(int candidateCount, DateTime now) {
+  if (candidateCount <= 1) {
+    return 0;
+  }
+
+  return now.millisecondsSinceEpoch % candidateCount;
+}
+
+bool _hasSchedule(String startAt, String endAt) {
+  return startAt.trim().isNotEmpty || endAt.trim().isNotEmpty;
+}
+
+void _logSelectedAd({
+  required String logPrefix,
+  required String id,
+  required String slot,
+  required String startAt,
+  required String endAt,
+}) {
+  debugPrint(
+    '$logPrefix selected: id=$id, slot=$slot, startAt=$startAt, endAt=$endAt, active=true',
+  );
+}
+
+void _logSingleAdState({
+  required String logPrefix,
+  required String id,
+  required String slot,
+  required String startAt,
+  required String endAt,
+  required bool enabled,
+}) {
+  debugPrint(
+    '$logPrefix single: id=$id, slot=$slot, startAt=$startAt, endAt=$endAt, active=$enabled',
+  );
 }
 
 Song? _songFromJson(Object? rawJson) {
