@@ -1,6 +1,7 @@
 import 'dart:convert';
 
-import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 const String adConfigUrl =
     'https://tangerine-nougat-072e10.netlify.app/ads/ad_config.json';
@@ -43,23 +44,44 @@ const SponsorAd fallbackBottomAd = SponsorAd(
 );
 
 Future<SponsorAd> loadBottomSponsorAd({String configUrl = adConfigUrl}) async {
+  debugPrint('SponsorAd config load start: $configUrl');
+
   try {
-    final rawJson = await NetworkAssetBundle(
-      Uri.parse(configUrl),
-    ).loadString('');
-    final decoded = jsonDecode(rawJson);
+    final response = await http.get(Uri.parse(configUrl));
+
+    if (response.statusCode != 200) {
+      debugPrint(
+        'SponsorAd config load failed: $configUrl / status ${response.statusCode}',
+      );
+      return fallbackBottomAd;
+    }
+
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (error) {
+      debugPrint('SponsorAd JSON decode failed: $configUrl / $error');
+      return fallbackBottomAd;
+    }
 
     if (decoded is! Map) {
+      debugPrint('SponsorAd config is not Map: $configUrl');
       return fallbackBottomAd;
     }
 
     final bottomAdJson = decoded['bottomAd'];
     if (bottomAdJson is! Map) {
+      debugPrint('SponsorAd bottomAd missing or not Map: $configUrl');
       return fallbackBottomAd;
     }
 
-    return SponsorAd.fromJson(Map<String, Object?>.from(bottomAdJson));
-  } catch (_) {
+    final ad = SponsorAd.fromJson(Map<String, Object?>.from(bottomAdJson));
+    debugPrint(
+      'SponsorAd loaded: enabled=${ad.enabled}, imageUrl=${ad.imageUrl}',
+    );
+    return ad;
+  } catch (error) {
+    debugPrint('SponsorAd config load error: $configUrl / $error');
     return fallbackBottomAd;
   }
 }

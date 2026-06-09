@@ -2245,6 +2245,7 @@ class _SponsorAdImage extends StatelessWidget {
       imageUrl.trim(),
       fit: BoxFit.cover,
       errorBuilder: (context, error, stackTrace) {
+        debugPrint('SponsorAd image load error: ${imageUrl.trim()} / $error');
         return const _FallbackSponsorAdImage();
       },
       loadingBuilder: (context, child, loadingProgress) {
