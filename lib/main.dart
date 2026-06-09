@@ -2401,8 +2401,36 @@ class _FallbackSponsorAdImage extends StatelessWidget {
         }
 
         debugPrint('SponsorAd fallback asset load error: $assetPath / $error');
+        if (assetPath == fallbackMainAdAssetPath) {
+          return const _MainSponsorImagePlaceholder();
+        }
+
         return Image.asset(fallbackBottomAdAssetPath, fit: BoxFit.contain);
       },
+    );
+  }
+}
+
+class _MainSponsorImagePlaceholder extends StatelessWidget {
+  const _MainSponsorImagePlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest),
+      child: Center(
+        child: Text(
+          'MAIN AD TEST',
+          style: TextStyle(
+            color: colorScheme.onSurfaceVariant,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ),
     );
   }
 }
