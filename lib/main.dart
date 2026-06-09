@@ -2243,7 +2243,7 @@ class _SponsorAdImage extends StatelessWidget {
 
     return Image.network(
       imageUrl.trim(),
-      fit: BoxFit.cover,
+      fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) {
         debugPrint('SponsorAd image load error: ${imageUrl.trim()} / $error');
         return const _FallbackSponsorAdImage();
@@ -2264,7 +2264,7 @@ class _FallbackSponsorAdImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(fallbackBottomAdAssetPath, fit: BoxFit.cover);
+    return Image.asset(fallbackBottomAdAssetPath, fit: BoxFit.contain);
   }
 }
 
