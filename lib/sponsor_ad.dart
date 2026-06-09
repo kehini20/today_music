@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 
 const String adConfigUrl =
-    'https://TDM_NETLIFY_URL.netlify.app/ads/ad_config.json';
+    'https://tangerine-nougat-072e10.netlify.app/ads/ad_config.json';
 
 const String fallbackBottomAdAssetPath =
     'assets/ads/ad_tdm_bottom_fallback.png';
