@@ -1471,7 +1471,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
         bottomNavigationBar: SafeArea(
           top: false,
           child: Container(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               border: Border(
@@ -1480,38 +1479,41 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 ),
               ),
             ),
-            child: Align(
-              alignment: Alignment.center,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_bottomAd.enabled) ...[
-                      SponsorBottomBanner(
-                        ad: _bottomAd,
-                        onTap: () => _openSponsorAdLink(_bottomAd),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _showSongStorageSheet,
-                            child: const Text('노래 저장소'),
-                          ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+              child: Center(
+                heightFactor: 1,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_bottomAd.enabled) ...[
+                        SponsorBottomBanner(
+                          ad: _bottomAd,
+                          onTap: () => _openSponsorAdLink(_bottomAd),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _showSettingsDialog,
-                            child: const Text('설정'),
-                          ),
-                        ),
+                        const SizedBox(height: 10),
                       ],
-                    ),
-                  ],
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _showSongStorageSheet,
+                              child: const Text('노래 저장소'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _showSettingsDialog,
+                              child: const Text('설정'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
