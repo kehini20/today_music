@@ -1396,8 +1396,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          SongResultCard(song: _selectedSong),
                           if (_selectedSong != null) ...[
+                            SongResultCard(song: _selectedSong),
                             const SizedBox(height: 16),
                             _PickSongButton(
                               label: '다른 곡 뽑기',
@@ -1479,7 +1479,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 child: const Text('공유하기'),
                               ),
                           ] else ...[
-                            const SizedBox(height: 24),
                             MainSponsorPanel(
                               ad: _mainAd,
                               onOpenLink: () =>
@@ -2243,6 +2242,8 @@ class MainSponsorPanel extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final hasLink = ad.linkUrl.trim().isNotEmpty;
     final hasMessage = ad.message.trim().isNotEmpty;
+    final song = ad.song;
+    final songLabel = song == null ? '' : '${song.artist} - ${song.title}';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -2270,7 +2271,7 @@ class MainSponsorPanel extends StatelessWidget {
               ),
             ),
           ),
-          if (hasMessage) ...[
+          if (hasMessage || songLabel.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(
               '후원자 픽',
@@ -2280,18 +2281,34 @@ class MainSponsorPanel extends StatelessWidget {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              ad.message,
-              maxLines: 5,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colorScheme.onSurface,
-                fontSize: 14,
-                height: 1.35,
-                fontWeight: FontWeight.w600,
+            if (songLabel.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                songLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                  fontSize: 16,
+                  height: 1.3,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
+            ],
+            if (hasMessage) ...[
+              const SizedBox(height: 6),
+              Text(
+                ad.message,
+                maxLines: 5,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                  fontSize: 14,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
           const SizedBox(height: 14),
           Wrap(
