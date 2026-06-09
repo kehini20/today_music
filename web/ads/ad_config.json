@@ -1,0 +1,9 @@
+{
+  "bottomAd": {
+    "enabled": true,
+    "title": "오늘의 한 곡",
+    "message": "오늘도 한 곡 뽑아볼까요?",
+    "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_001.png",
+    "linkUrl": ""
+  }
+}
