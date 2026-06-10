@@ -5,8 +5,11 @@ import 'package:http/http.dart' as http;
 
 import 'song.dart';
 
-const String adConfigUrl =
-    'https://tangerine-nougat-072e10.netlify.app/ads/ad_config.json';
+const String adConfigUrl = String.fromEnvironment(
+  'SPONSOR_AD_CONFIG_URL',
+  defaultValue:
+      'https://tangerine-nougat-072e10.netlify.app/ads/ad_config.json',
+);
 
 const String fallbackBottomAdAssetPath =
     'assets/ads/ad_tdm_bottom_fallback.png';
