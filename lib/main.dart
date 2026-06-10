@@ -3466,7 +3466,6 @@ class MainSponsorPanel extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               '후원자 픽',
-              textAlign: TextAlign.center,
               style: TextStyle(
                 color: colorScheme.onSurfaceVariant,
                 fontSize: 11,
@@ -3479,7 +3478,6 @@ class MainSponsorPanel extends StatelessWidget {
                 songLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: colorScheme.onSurface,
                   fontSize: 16,
@@ -3494,7 +3492,6 @@ class MainSponsorPanel extends StatelessWidget {
                 ad.message,
                 maxLines: 5,
                 overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: colorScheme.onSurface,
                   fontSize: 14,
