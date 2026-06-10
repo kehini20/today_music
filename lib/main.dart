@@ -112,6 +112,31 @@ class SongStorage {
   }
 }
 
+enum PasteSongCandidateStatus { newSong, existing, needsReview }
+
+class PasteSongCandidate {
+  final String sourceLine;
+  final Song? song;
+  final PasteSongCandidateStatus status;
+
+  const PasteSongCandidate({
+    required this.sourceLine,
+    required this.song,
+    required this.status,
+  });
+
+  String get statusLabel {
+    switch (status) {
+      case PasteSongCandidateStatus.newSong:
+        return '새 곡';
+      case PasteSongCandidateStatus.existing:
+        return '이미 있음';
+      case PasteSongCandidateStatus.needsReview:
+        return '확인 필요';
+    }
+  }
+}
+
 class TodayMusicApp extends StatelessWidget {
   const TodayMusicApp({super.key});
 
@@ -1140,6 +1165,14 @@ class _TodaySongPageState extends State<TodaySongPage> {
                             child: const Text('곡 추가'),
                           ),
                           OutlinedButton(
+                            onPressed: () {
+                              _showPasteSongsDialog(
+                                onSongsAdded: () => refreshSheet(() {}),
+                              );
+                            },
+                            child: const Text('붙여넣기로 추가'),
+                          ),
+                          OutlinedButton(
                             onPressed: _exportSongs,
                             child: const Text('내보내기'),
                           ),
@@ -1191,6 +1224,294 @@ class _TodaySongPageState extends State<TodaySongPage> {
         );
       },
     );
+  }
+
+  void _showPasteSongsDialog({VoidCallback? onSongsAdded}) {
+    final pasteController = TextEditingController();
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('붙여넣기로 추가'),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 520,
+              maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.62,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('복사한 곡 목록을 붙여넣으면 가수/곡명을 자동으로 추정합니다.'),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: TextField(
+                    controller: pasteController,
+                    minLines: 10,
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'N.Flying - 환절기\n1. N.Flying / 옥탑방',
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final candidates = _analyzePastedSongs(pasteController.text);
+                Navigator.of(dialogContext).pop();
+                _showPasteSongsResultDialog(
+                  candidates,
+                  onSongsAdded: onSongsAdded,
+                );
+              },
+              child: const Text('분석하기'),
+            ),
+          ],
+        );
+      },
+    ).whenComplete(pasteController.dispose);
+  }
+
+  void _showPasteSongsResultDialog(
+    List<PasteSongCandidate> candidates, {
+    VoidCallback? onSongsAdded,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final newSongCount = candidates
+            .where(
+              (candidate) =>
+                  candidate.status == PasteSongCandidateStatus.newSong,
+            )
+            .length;
+
+        return AlertDialog(
+          title: const Text('분석 결과'),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 560,
+              maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.65,
+            ),
+            child: candidates.isEmpty
+                ? const Text('추가할 수 있는 후보가 없습니다.')
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: candidates.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final candidate = candidates[index];
+                      final song = candidate.song;
+                      final colorScheme = Theme.of(context).colorScheme;
+
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          song == null
+                              ? candidate.sourceLine
+                              : '${song.artist} - ${song.title}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: song == null
+                            ? const Text('가수명과 곡명을 나눌 수 없습니다.')
+                            : Text('가수명: ${song.artist}\n곡명: ${song.title}'),
+                        trailing: Text(
+                          candidate.statusLabel,
+                          style: TextStyle(
+                            color: _pasteStatusColor(
+                              candidate.status,
+                              colorScheme,
+                            ),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: newSongCount == 0
+                  ? null
+                  : () {
+                      Navigator.of(dialogContext).pop();
+                      _addPastedNewSongs(
+                        candidates,
+                        onSongsAdded: onSongsAdded,
+                      );
+                    },
+              child: const Text('새 곡만 추가'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Color _pasteStatusColor(
+    PasteSongCandidateStatus status,
+    ColorScheme colorScheme,
+  ) {
+    switch (status) {
+      case PasteSongCandidateStatus.newSong:
+        return colorScheme.primary;
+      case PasteSongCandidateStatus.existing:
+        return colorScheme.onSurfaceVariant;
+      case PasteSongCandidateStatus.needsReview:
+        return colorScheme.error;
+    }
+  }
+
+  void _addPastedNewSongs(
+    List<PasteSongCandidate> candidates, {
+    VoidCallback? onSongsAdded,
+  }) {
+    final songsToAdd = candidates
+        .where(
+          (candidate) => candidate.status == PasteSongCandidateStatus.newSong,
+        )
+        .map((candidate) => candidate.song)
+        .nonNulls
+        .toList();
+    final existingCount = candidates
+        .where(
+          (candidate) => candidate.status == PasteSongCandidateStatus.existing,
+        )
+        .length;
+
+    if (songsToAdd.isEmpty) {
+      _showRootSnackBar('새로 추가할 곡이 없습니다.');
+      return;
+    }
+
+    setState(() {
+      _songs.addAll(songsToAdd);
+    });
+    _saveSongs();
+    onSongsAdded?.call();
+
+    final message = existingCount == 0
+        ? '새 곡 ${songsToAdd.length}개를 추가했습니다.'
+        : '새 곡 ${songsToAdd.length}개를 추가했습니다. 이미 있는 곡 $existingCount개는 제외했습니다.';
+    _showRootSnackBar(message);
+  }
+
+  List<PasteSongCandidate> _analyzePastedSongs(String text) {
+    final candidates = <PasteSongCandidate>[];
+    final existingKeys = _songs.map(_songDuplicateKey).toSet();
+    final seenKeys = <String>{};
+
+    for (final rawLine in const LineSplitter().convert(text)) {
+      final cleanedLine = _cleanPastedSongLine(rawLine);
+      if (cleanedLine.isEmpty) {
+        continue;
+      }
+
+      final parsedSong = _parsePastedSongLine(cleanedLine);
+      if (parsedSong == null) {
+        candidates.add(
+          PasteSongCandidate(
+            sourceLine: cleanedLine,
+            song: null,
+            status: PasteSongCandidateStatus.needsReview,
+          ),
+        );
+        continue;
+      }
+
+      final key = _songDuplicateKey(parsedSong);
+      final status = existingKeys.contains(key) || seenKeys.contains(key)
+          ? PasteSongCandidateStatus.existing
+          : PasteSongCandidateStatus.newSong;
+      seenKeys.add(key);
+
+      candidates.add(
+        PasteSongCandidate(
+          sourceLine: cleanedLine,
+          song: parsedSong,
+          status: status,
+        ),
+      );
+    }
+
+    return candidates;
+  }
+
+  String _cleanPastedSongLine(String rawLine) {
+    return rawLine
+        .trim()
+        .replaceFirst(RegExp(r'^\d+[\.\)]?\s*'), '')
+        .replaceAll(RegExp(r'["“”‘’]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  Song? _parsePastedSongLine(String line) {
+    if (line.isEmpty || RegExp(r'^[=\-–—_\s]+$').hasMatch(line)) {
+      return null;
+    }
+
+    final separatorMatch = RegExp(r'\s*(?:-|–|—|/|,|:)\s*').firstMatch(line);
+    if (separatorMatch == null) {
+      return null;
+    }
+
+    final left = line.substring(0, separatorMatch.start).trim();
+    final right = line.substring(separatorMatch.end).trim();
+    if (left.isEmpty || right.isEmpty) {
+      return null;
+    }
+
+    final knownArtists = _knownArtistNamesForPaste();
+    final leftIsArtist = _matchesKnownArtist(left, knownArtists);
+    final rightIsArtist = _matchesKnownArtist(right, knownArtists);
+    final artist = rightIsArtist && !leftIsArtist ? right : left;
+    final title = rightIsArtist && !leftIsArtist ? left : right;
+
+    if (artist.isEmpty || title.isEmpty) {
+      return null;
+    }
+
+    return Song(artist: artist, title: title, tags: const []);
+  }
+
+  Set<String> _knownArtistNamesForPaste() {
+    return {
+      ..._songs.map((song) => song.artist),
+      ...sampleSongs.map((song) => song.artist),
+      'N.Flying',
+      '엔플라잉',
+      'ONEWE',
+      '원위',
+      'Xdinary Heroes',
+      '엑스디너리 히어로즈',
+      'Touched',
+      '터치드',
+      '극동아시아타이거즈',
+    }.map((artist) => artist.trim().toLowerCase()).toSet();
+  }
+
+  bool _matchesKnownArtist(String value, Set<String> knownArtists) {
+    return knownArtists.contains(value.trim().toLowerCase());
   }
 
   void _showEditSongDialog(Song song, {VoidCallback? onSongUpdated}) {
