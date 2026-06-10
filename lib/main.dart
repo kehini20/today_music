@@ -245,6 +245,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
   List<Song> _songs = [];
   final TextEditingController _shareTextController = TextEditingController();
   Song? _selectedSong;
+  Song? _lastResultSong;
+  bool _isSponsorPick = false;
   SponsorAd _bottomAd = fallbackBottomAd;
   MainSponsorAd _mainAd = fallbackMainAd;
   String _defaultShareMessage = '';
@@ -277,6 +279,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
     setState(() {
       _songs = savedSongs ?? [];
       _selectedSong = null;
+      _lastResultSong = null;
+      _isSponsorPick = false;
       _defaultShareMessage = defaultShareMessage;
       _includeTodayTag = true;
       _shareTextController.clear();
@@ -429,13 +433,25 @@ class _TodaySongPageState extends State<TodaySongPage> {
       return;
     }
 
-    Song nextSong = _songs[_random.nextInt(_songs.length)];
-    while (_songs.length > 1 && nextSong == _selectedSong) {
-      nextSong = _songs[_random.nextInt(_songs.length)];
+    final previousResult = _isSponsorPick
+        ? (_selectedSong ?? _lastResultSong)
+        : _selectedSong ?? _lastResultSong;
+    var randomCandidates = _songs;
+    if (previousResult != null && _songs.length > 1) {
+      final filteredSongs = _songs
+          .where((song) => !_isSameSongResult(song, previousResult))
+          .toList();
+      if (filteredSongs.isNotEmpty) {
+        randomCandidates = filteredSongs;
+      }
     }
+
+    final nextSong = randomCandidates[_random.nextInt(randomCandidates.length)];
 
     setState(() {
       _selectedSong = nextSong;
+      _lastResultSong = nextSong;
+      _isSponsorPick = false;
       _includeSongLink = true;
       _resetShareText(nextSong);
     });
@@ -450,6 +466,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
     setState(() {
       _selectedSong = sponsorSong;
+      _lastResultSong = sponsorSong;
+      _isSponsorPick = true;
       _includeSongLink = true;
       _resetShareText(sponsorSong);
     });
@@ -894,6 +912,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
         '${song.title.trim().toLowerCase()}';
   }
 
+  bool _isSameSongResult(Song first, Song second) {
+    return _songDuplicateKey(first) == _songDuplicateKey(second);
+  }
+
   void _showImportResultDialog(String message) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -1002,6 +1024,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
     setState(() {
       _songs = [];
       _selectedSong = null;
+      _lastResultSong = null;
+      _isSponsorPick = false;
       _shareTextController.clear();
       _includeTodayTag = true;
       _includeSongLink = true;
@@ -1037,8 +1061,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
       if (identical(_selectedSong, originalSong)) {
         _selectedSong = updatedSong;
+        _lastResultSong = updatedSong;
         _includeSongLink = true;
         _resetShareText(updatedSong);
+      } else if (_lastResultSong != null &&
+          _isSameSongResult(_lastResultSong!, originalSong)) {
+        _lastResultSong = updatedSong;
       }
     });
 
@@ -1071,6 +1099,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
         _shareTextController.clear();
         _includeSongLink = true;
       }
+      if (_lastResultSong != null &&
+          _isSameSongResult(_lastResultSong!, song)) {
+        _lastResultSong = null;
+      }
+      if (_selectedSong == null) {
+        _isSponsorPick = false;
+      }
     });
     _saveSongs();
 
@@ -1082,6 +1117,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   void _resetToInitialScreen() {
     setState(() {
       _selectedSong = null;
+      _isSponsorPick = false;
       _shareTextController.clear();
       _includeSongLink = true;
     });
@@ -1098,6 +1134,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final selectedSong = _selectedSong;
     final shouldResetResult =
         selectedSong != null && songsToDelete.contains(selectedSong);
+    final shouldClearLastResult =
+        _lastResultSong != null &&
+        songsToDelete.any((song) => _isSameSongResult(song, _lastResultSong!));
 
     setState(() {
       _songs.removeWhere((song) => song.artist == artist);
@@ -1105,6 +1144,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
         _selectedSong = null;
         _shareTextController.clear();
         _includeSongLink = true;
+      }
+      if (shouldClearLastResult) {
+        _lastResultSong = null;
+      }
+      if (_selectedSong == null) {
+        _isSponsorPick = false;
       }
     });
     _saveSongs();

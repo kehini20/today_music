@@ -10,6 +10,8 @@ const String adConfigUrl = String.fromEnvironment(
   defaultValue: 'ads/ad_config.json',
 );
 
+const String appAdConfigBaseUrl = 'https://today-music.pages.dev/';
+
 const String fallbackBottomAdAssetPath =
     'assets/ads/ad_tdm_bottom_fallback.png';
 
@@ -151,14 +153,15 @@ const MainSponsorAd fallbackMainAd = MainSponsorAd(
 Future<SponsorAdConfig> loadSponsorAdConfig({
   String configUrl = adConfigUrl,
 }) async {
-  debugPrint('SponsorAd config load start: $configUrl');
+  final resolvedConfigUrl = _resolveAdConfigUrl(configUrl);
+  debugPrint('SponsorAd config load start: $resolvedConfigUrl');
 
   try {
-    final response = await http.get(Uri.parse(configUrl));
+    final response = await http.get(Uri.parse(resolvedConfigUrl));
 
     if (response.statusCode != 200) {
       debugPrint(
-        'SponsorAd config load failed: $configUrl / status ${response.statusCode}',
+        'SponsorAd config load failed: $resolvedConfigUrl / status ${response.statusCode}',
       );
       return const SponsorAdConfig(bottomAd: fallbackBottomAd, mainAd: null);
     }
@@ -167,24 +170,24 @@ Future<SponsorAdConfig> loadSponsorAdConfig({
     try {
       decoded = jsonDecode(response.body);
     } catch (error) {
-      debugPrint('SponsorAd JSON decode failed: $configUrl / $error');
+      debugPrint('SponsorAd JSON decode failed: $resolvedConfigUrl / $error');
       return const SponsorAdConfig(bottomAd: fallbackBottomAd, mainAd: null);
     }
 
     if (decoded is! Map) {
-      debugPrint('SponsorAd config is not Map: $configUrl');
+      debugPrint('SponsorAd config is not Map: $resolvedConfigUrl');
       return const SponsorAdConfig(bottomAd: fallbackBottomAd, mainAd: null);
     }
 
     final now = DateTime.now();
     final bottomAd = _resolveSponsorAdImageUrl(
-      _selectBottomAd(decoded, now, configUrl),
-      configUrl,
+      _selectBottomAd(decoded, now, resolvedConfigUrl),
+      resolvedConfigUrl,
     );
     final selectedMainAd = _selectMainAd(decoded, now);
     final mainAd = selectedMainAd == null
         ? null
-        : _resolveMainSponsorAdImageUrl(selectedMainAd, configUrl);
+        : _resolveMainSponsorAdImageUrl(selectedMainAd, resolvedConfigUrl);
 
     debugPrint(
       'SponsorAd loaded: enabled=${bottomAd.enabled}, imageUrl=${bottomAd.imageUrl}',
@@ -200,7 +203,7 @@ Future<SponsorAdConfig> loadSponsorAdConfig({
 
     return SponsorAdConfig(bottomAd: bottomAd, mainAd: mainAd);
   } catch (error) {
-    debugPrint('SponsorAd config load error: $configUrl / $error');
+    debugPrint('SponsorAd config load error: $resolvedConfigUrl / $error');
     return const SponsorAdConfig(bottomAd: fallbackBottomAd, mainAd: null);
   }
 }
@@ -208,6 +211,29 @@ Future<SponsorAdConfig> loadSponsorAdConfig({
 Future<SponsorAd> loadBottomSponsorAd({String configUrl = adConfigUrl}) async {
   final config = await loadSponsorAdConfig(configUrl: configUrl);
   return config.bottomAd;
+}
+
+String _resolveAdConfigUrl(String configUrl) {
+  final trimmed = configUrl.trim();
+  if (trimmed.isEmpty) {
+    return kIsWeb
+        ? adConfigUrl
+        : Uri.parse(appAdConfigBaseUrl).resolve(adConfigUrl).toString();
+  }
+
+  final configUri = Uri.tryParse(trimmed);
+  if (configUri != null && configUri.hasScheme) {
+    return trimmed;
+  }
+
+  if (kIsWeb) {
+    return trimmed;
+  }
+
+  final normalizedPath = trimmed.startsWith('/')
+      ? trimmed.substring(1)
+      : trimmed;
+  return Uri.parse(appAdConfigBaseUrl).resolve(normalizedPath).toString();
 }
 
 SponsorAd _resolveSponsorAdImageUrl(SponsorAd ad, String configUrl) {
