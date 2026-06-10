@@ -160,6 +160,14 @@ class PasteSongAnalysis {
   const PasteSongAnalysis({required this.inferredArtist, required this.drafts});
 }
 
+const String _kSetlist = '\uC14B\uB9AC\uC2A4\uD2B8';
+const String _kConcert = '\uACF5\uC5F0';
+const String _kConcertKo = '\uCF58\uC11C\uD2B8';
+const String _kLiveKo = '\uB77C\uC774\uBE0C';
+const String _kEncoreSong = '\uC575\uCF5C\uACE1';
+const String _kTodaySongs = '\uC624\uB298 \uB4E4\uC740 \uB178\uB798';
+const String _kEncore = '\uC575\uCF5C';
+
 class TodayMusicApp extends StatelessWidget {
   const TodayMusicApp({super.key});
 
@@ -1313,6 +1321,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final inferredArtistController = TextEditingController(
       text: analysis.inferredArtist,
     );
+    final excludedIndexes = <int>{};
 
     showDialog<void>(
       context: context,
@@ -1323,10 +1332,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
               analysis.drafts,
               inferredArtistController.text,
             );
-            final newSongCount = candidates
+            final selectedNewSongCount = candidates
+                .asMap()
+                .entries
                 .where(
-                  (candidate) =>
-                      candidate.status == PasteSongCandidateStatus.newSong,
+                  (entry) =>
+                      entry.value.status == PasteSongCandidateStatus.newSong &&
+                      !excludedIndexes.contains(entry.key),
                 )
                 .length;
 
@@ -1364,10 +1376,33 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 final colorScheme = Theme.of(
                                   context,
                                 ).colorScheme;
+                                final canInclude =
+                                    candidate.status ==
+                                    PasteSongCandidateStatus.newSong;
+                                final isIncluded =
+                                    canInclude &&
+                                    !excludedIndexes.contains(index);
 
                                 return ListTile(
                                   dense: true,
                                   contentPadding: EdgeInsets.zero,
+                                  leading: Checkbox(
+                                    value: isIncluded,
+                                    onChanged: canInclude
+                                        ? (value) {
+                                            refreshDialog(() {
+                                              if (value ?? false) {
+                                                excludedIndexes.remove(index);
+                                              } else {
+                                                excludedIndexes.add(index);
+                                              }
+                                            });
+                                          }
+                                        : null,
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
                                   title: Text(
                                     song == null
                                         ? candidate.sourceLine
@@ -1404,12 +1439,20 @@ class _TodaySongPageState extends State<TodaySongPage> {
                   child: const Text('취소'),
                 ),
                 FilledButton(
-                  onPressed: newSongCount == 0
+                  onPressed: selectedNewSongCount == 0
                       ? null
                       : () {
                           Navigator.of(dialogContext).pop();
                           _addPastedNewSongs(
-                            candidates,
+                            candidates
+                                .asMap()
+                                .entries
+                                .where(
+                                  (entry) =>
+                                      !excludedIndexes.contains(entry.key),
+                                )
+                                .map((entry) => entry.value)
+                                .toList(),
                             onSongsAdded: onSongsAdded,
                           );
                         },
@@ -1477,13 +1520,24 @@ class _TodaySongPageState extends State<TodaySongPage> {
     var lineIndex = 0;
 
     for (final rawLine in const LineSplitter().convert(text)) {
+      final rawTrimmedLine = rawLine.trim();
+      if (rawTrimmedLine.isEmpty) {
+        lineIndex++;
+        continue;
+      }
+
+      if (_isPastedMetaLine(rawTrimmedLine, inferredArtist, lineIndex)) {
+        lineIndex++;
+        continue;
+      }
+
       final cleanedLine = _cleanPastedSongLine(rawLine);
       if (cleanedLine.isEmpty) {
         lineIndex++;
         continue;
       }
 
-      if (_isPastedHeaderLine(cleanedLine, inferredArtist, lineIndex)) {
+      if (_isPastedMetaLine(cleanedLine, inferredArtist, lineIndex)) {
         lineIndex++;
         continue;
       }
@@ -1579,7 +1633,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       }
 
       checkedLineCount++;
-      if (checkedLineCount > 3) {
+      if (checkedLineCount > 5) {
         break;
       }
 
@@ -1593,36 +1647,67 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   String _cleanPastedHeaderArtist(String line) {
+    final colonIndex = line.indexOf(':');
+    if (colonIndex >= 0) {
+      final left = line.substring(0, colonIndex).trim();
+      final right = line.substring(colonIndex + 1).trim();
+      if (_looksLikeEventHeader(left) && _looksLikeArtistCandidate(right)) {
+        return right;
+      }
+    }
+
     final hasHeaderMarker =
-        RegExp(r'\b\d{6}\b|\b\d{8}\b').hasMatch(line) ||
-        RegExp(
-          r'(셋리스트|setlist|공연|콘서트|라이브|live)',
-          caseSensitive: false,
-        ).hasMatch(line);
+        _containsDateLikeText(line) || _containsHeaderKeyword(line);
 
     if (!hasHeaderMarker) {
       return '';
     }
 
-    return line
+    final candidate = line
         .replaceAll(RegExp(r'\b\d{6}\b|\b\d{8}\b'), ' ')
+        .replaceAll(RegExp(r'\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b'), ' ')
         .replaceAll(
-          RegExp(r'(셋리스트|setlist|공연|콘서트|라이브|live)', caseSensitive: false),
+          RegExp(
+            '$_kSetlist|setlist|$_kConcert|$_kConcertKo|$_kLiveKo|live',
+            caseSensitive: false,
+          ),
           ' ',
         )
         .replaceAll(RegExp(r'[_\-–—:/,]+'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+
+    return _looksLikeArtistCandidate(candidate) ? candidate : '';
   }
 
-  bool _isPastedHeaderLine(String line, String inferredArtist, int lineIndex) {
-    if (lineIndex > 2 || inferredArtist.trim().isEmpty) {
+  bool _isPastedMetaLine(String line, String inferredArtist, int lineIndex) {
+    if (RegExp(r'^[=\-–—_\s]+$').hasMatch(line)) {
+      return true;
+    }
+
+    final lowerLine = line.toLowerCase();
+    if (lowerLine == 'setlist' || line == _kSetlist) {
+      return true;
+    }
+
+    if (_containsDateLikeText(line) && _containsHeaderKeyword(line)) {
+      return true;
+    }
+
+    if (lineIndex > 4) {
       return false;
     }
 
     final headerArtist = _cleanPastedHeaderArtist(line);
-    return headerArtist.isNotEmpty &&
-        headerArtist.toLowerCase() == inferredArtist.trim().toLowerCase();
+    if (headerArtist.isEmpty) {
+      return false;
+    }
+
+    if (inferredArtist.trim().isEmpty) {
+      return true;
+    }
+
+    return headerArtist.toLowerCase() == inferredArtist.trim().toLowerCase();
   }
 
   Song? _parsePastedSongLine(String line) {
@@ -1630,7 +1715,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
       return null;
     }
 
-    final separatorMatch = RegExp(r'\s*(?:-|–|—|/|,|:)\s*').firstMatch(line);
+    final nonColonSeparatorMatch = RegExp(
+      r'\s*(?:-|–|—|/|,)\s*',
+    ).firstMatch(line);
+    final separatorMatch =
+        nonColonSeparatorMatch ?? RegExp(r'\s*:\s*').firstMatch(line);
     if (separatorMatch == null) {
       return null;
     }
@@ -1644,6 +1733,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final knownArtists = _knownArtistNamesForPaste();
     final leftIsArtist = _matchesKnownArtist(left, knownArtists);
     final rightIsArtist = _matchesKnownArtist(right, knownArtists);
+    final isColonSeparator =
+        nonColonSeparatorMatch == null && separatorMatch.group(0) != null;
+
+    if (isColonSeparator && !leftIsArtist && !rightIsArtist) {
+      return null;
+    }
+
     final artist = rightIsArtist && !leftIsArtist ? right : left;
     final title = rightIsArtist && !leftIsArtist ? left : right;
 
@@ -1660,19 +1756,74 @@ class _TodaySongPageState extends State<TodaySongPage> {
     }
 
     final lowerLine = line.toLowerCase();
-    const blockedLines = {'setlist', '앵콜곡', '오늘 들은 노래', '앵콜', 'encore'};
+    const blockedLines = {
+      'setlist',
+      _kEncoreSong,
+      _kTodaySongs,
+      _kEncore,
+      'encore',
+    };
 
     if (blockedLines.contains(lowerLine) ||
         lowerLine.contains('setlist') ||
-        line.contains('셋리스트')) {
+        line.contains(_kSetlist)) {
       return null;
     }
 
-    if (RegExp(r'\s*(?:-|–|—|/|,|:)\s*').hasMatch(line)) {
+    if (RegExp(r'\s*(?:-|–|—|/|,)\s*').hasMatch(line)) {
       return null;
     }
 
     return line;
+  }
+
+  bool _containsDateLikeText(String value) {
+    return RegExp(r'\b\d{6}\b|\b\d{8}\b').hasMatch(value) ||
+        RegExp(r'\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b').hasMatch(value);
+  }
+
+  bool _containsHeaderKeyword(String value) {
+    final lowerValue = value.toLowerCase();
+    return lowerValue.contains('setlist') ||
+        lowerValue.contains('live') ||
+        value.contains(_kSetlist) ||
+        value.contains(_kConcert) ||
+        value.contains(_kConcertKo) ||
+        value.contains(_kLiveKo);
+  }
+
+  bool _looksLikeEventHeader(String value) {
+    final lowerValue = value.toLowerCase();
+    return _containsDateLikeText(value) ||
+        _containsHeaderKeyword(value) ||
+        lowerValue.contains('stage') ||
+        lowerValue.contains('festival') ||
+        lowerValue.contains('concert') ||
+        lowerValue.contains(' in ');
+  }
+
+  bool _looksLikeArtistCandidate(String value) {
+    final candidate = value.trim();
+    if (candidate.isEmpty || _isDateLikeValue(candidate)) {
+      return false;
+    }
+
+    final lowerCandidate = candidate.toLowerCase();
+    if (_containsHeaderKeyword(candidate) ||
+        lowerCandidate.contains('stage') ||
+        lowerCandidate.contains('festival') ||
+        lowerCandidate.contains('concert')) {
+      return false;
+    }
+
+    return candidate.length <= 30;
+  }
+
+  bool _isDateLikeValue(String value) {
+    final compactValue = value.trim();
+    return RegExp(r'^\d{6}$|^\d{8}$').hasMatch(compactValue) ||
+        RegExp(r'^\d{4}[./-]\d{1,2}[./-]\d{1,2}$').hasMatch(compactValue) ||
+        RegExp(r'^\d{4}\s+\d{1,2}\s+\d{1,2}$').hasMatch(compactValue);
   }
 
   Set<String> _knownArtistNamesForPaste() {
