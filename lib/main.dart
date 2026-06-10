@@ -114,6 +114,10 @@ class SongStorage {
 
 enum PasteSongCandidateStatus { newSong, existing, needsReview }
 
+enum ArtistSortMode { added, name }
+
+enum SongListSortMode { added, title }
+
 class PasteSongCandidate {
   final String sourceLine;
   final Song? song;
@@ -246,6 +250,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   String _defaultShareMessage = '';
   bool _includeTodayTag = true;
   bool _includeSongLink = true;
+  ArtistSortMode _artistSortMode = ArtistSortMode.added;
 
   @override
   void initState() {
@@ -1152,6 +1157,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
         return StatefulBuilder(
           builder: (context, refreshSheet) {
             final groupedSongs = songsByArtist(_songs);
+            final artistEntries = groupedSongs.entries.toList();
+            if (_artistSortMode == ArtistSortMode.name) {
+              artistEntries.sort(
+                (a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()),
+              );
+            }
             final colorScheme = Theme.of(bottomSheetContext).colorScheme;
             final maxHeight =
                 MediaQuery.sizeOf(bottomSheetContext).height * 0.82;
@@ -1180,6 +1191,29 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           color: colorScheme.onSurfaceVariant,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SegmentedButton<ArtistSortMode>(
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(
+                              value: ArtistSortMode.added,
+                              label: Text('추가순'),
+                            ),
+                            ButtonSegment(
+                              value: ArtistSortMode.name,
+                              label: Text('가수명순'),
+                            ),
+                          ],
+                          selected: {_artistSortMode},
+                          onSelectionChanged: (selection) {
+                            refreshSheet(() {
+                              _artistSortMode = selection.first;
+                            });
+                          },
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -1218,7 +1252,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         ],
                       ),
                       const SizedBox(height: 20),
-                      ...groupedSongs.entries.map(
+                      ...artistEntries.map(
                         (entry) => ArtistSongGroupTile(
                           artist: entry.key,
                           songs: entry.value,
@@ -1259,6 +1293,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   void _showPasteSongsDialog({VoidCallback? onSongsAdded}) {
     final pasteController = TextEditingController();
+    PasteSongAnalysis? analysisToShow;
 
     showDialog<void>(
       context: context,
@@ -1299,19 +1334,33 @@ class _TodaySongPageState extends State<TodaySongPage> {
             ),
             FilledButton(
               onPressed: () {
-                final analysis = _analyzePastedSongs(pasteController.text);
+                analysisToShow = _analyzePastedSongs(pasteController.text);
                 Navigator.of(dialogContext).pop();
-                _showPasteSongsResultDialog(
-                  analysis,
-                  onSongsAdded: onSongsAdded,
-                );
               },
               child: const Text('분석하기'),
             ),
           ],
         );
       },
-    ).whenComplete(pasteController.dispose);
+    ).whenComplete(() {
+      Future<void>.delayed(
+        const Duration(milliseconds: 300),
+        pasteController.dispose,
+      );
+
+      final analysis = analysisToShow;
+      if (analysis == null) {
+        return;
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+
+        _showPasteSongsResultDialog(analysis, onSongsAdded: onSongsAdded);
+      });
+    });
   }
 
   void _showPasteSongsResultDialog(
@@ -1341,16 +1390,16 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       !excludedIndexes.contains(entry.key),
                 )
                 .length;
+            final dialogSize = MediaQuery.sizeOf(dialogContext);
+            final contentWidth = min(dialogSize.width - 64, 560).toDouble();
+            final contentHeight = min(dialogSize.height * 0.62, 520).toDouble();
 
             return AlertDialog(
               title: const Text('분석 결과'),
-              content: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: 560,
-                  maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.72,
-                ),
+              content: SizedBox(
+                width: contentWidth,
+                height: contentHeight,
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TextField(
@@ -1362,11 +1411,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       onChanged: (_) => refreshDialog(() {}),
                     ),
                     const SizedBox(height: 12),
-                    Flexible(
+                    Expanded(
                       child: candidates.isEmpty
                           ? const Text('추가할 수 있는 후보가 없습니다.')
                           : ListView.separated(
-                              shrinkWrap: true,
                               itemCount: candidates.length,
                               separatorBuilder: (context, index) =>
                                   const Divider(height: 1),
@@ -1384,6 +1432,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                     !excludedIndexes.contains(index);
 
                                 return ListTile(
+                                  key: ValueKey(
+                                    'paste-${candidate.sourceLine}-$index-${song?.artist ?? ''}-${song?.title ?? ''}-${candidate.status.name}',
+                                  ),
                                   dense: true,
                                   contentPadding: EdgeInsets.zero,
                                   leading: Checkbox(
@@ -1456,14 +1507,19 @@ class _TodaySongPageState extends State<TodaySongPage> {
                             onSongsAdded: onSongsAdded,
                           );
                         },
-                  child: const Text('새 곡만 추가'),
+                  child: const Text('선택곡 추가'),
                 ),
               ],
             );
           },
         );
       },
-    ).whenComplete(inferredArtistController.dispose);
+    ).whenComplete(() {
+      Future<void>.delayed(
+        const Duration(milliseconds: 300),
+        inferredArtistController.dispose,
+      );
+    });
   }
 
   Color _pasteStatusColor(
@@ -1531,6 +1587,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
         continue;
       }
 
+      final isNumberedArtistTitleLine = _isHashNumberedArtistTitleLine(
+        rawTrimmedLine,
+      );
       final cleanedLine = _cleanPastedSongLine(rawLine);
       if (cleanedLine.isEmpty) {
         lineIndex++;
@@ -1542,7 +1601,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
         continue;
       }
 
-      final parsedSong = _parsePastedSongLine(cleanedLine);
+      final parsedSong = _parsePastedSongLine(
+        cleanedLine,
+        hasInferredArtist: inferredArtist.trim().isNotEmpty,
+        forceArtistTitleOrder: isNumberedArtistTitleLine,
+      );
       if (parsedSong != null) {
         drafts.add(
           PasteSongDraft(
@@ -1555,7 +1618,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
         continue;
       }
 
-      final titleOnly = _parseTitleOnlyPastedLine(cleanedLine);
+      final titleOnly = _parseTitleOnlyPastedLine(
+        cleanedLine,
+        allowSeparators: inferredArtist.trim().isNotEmpty,
+      );
       drafts.add(
         PasteSongDraft(
           sourceLine: cleanedLine,
@@ -1576,7 +1642,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
   ) {
     final candidates = <PasteSongCandidate>[];
     final existingKeys = _songs.map(_songDuplicateKey).toSet();
+    final existingNormalizedKeys = _songs.map(_pasteSongDuplicateKey).toSet();
     final seenKeys = <String>{};
+    final seenNormalizedKeys = <String>{};
     final normalizedInferredArtist = inferredArtist.trim();
 
     for (final draft in drafts) {
@@ -1597,10 +1665,17 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
       final parsedSong = Song(artist: artist, title: title, tags: const []);
       final key = _songDuplicateKey(parsedSong);
-      final status = existingKeys.contains(key) || seenKeys.contains(key)
+      final normalizedKey = _pasteSongDuplicateKey(parsedSong);
+      final isExactDuplicate =
+          existingKeys.contains(key) || seenKeys.contains(key);
+      final isSimilarDuplicate =
+          existingNormalizedKeys.contains(normalizedKey) ||
+          seenNormalizedKeys.contains(normalizedKey);
+      final status = isExactDuplicate || isSimilarDuplicate
           ? PasteSongCandidateStatus.existing
           : PasteSongCandidateStatus.newSong;
       seenKeys.add(key);
+      seenNormalizedKeys.add(normalizedKey);
 
       candidates.add(
         PasteSongCandidate(
@@ -1614,29 +1689,79 @@ class _TodaySongPageState extends State<TodaySongPage> {
     return candidates;
   }
 
-  String _cleanPastedSongLine(String rawLine) {
-    return rawLine
+  String _pasteSongDuplicateKey(Song song) {
+    return '${_normalizePasteCompareText(song.artist)}|${_normalizePasteTitle(song.title)}';
+  }
+
+  String _normalizePasteCompareText(String value) {
+    return value
         .trim()
-        .replaceFirst(RegExp(r'^\d+[\.\)]?\s*'), '')
-        .replaceFirst(RegExp(r'^[+\-*•]\s*'), '')
-        .replaceAll(RegExp(r'["“”‘’]'), '')
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'''[“”"'`´]'''), '');
+  }
+
+  String _normalizePasteTitle(String title) {
+    return _normalizePasteCompareText(
+      title
+          .replaceAll(RegExp(r'\([^)]*\)|（[^）]*）|\[[^\]]*\]'), ' ')
+          .replaceAll(RegExp(r'[~!@#$%^&*_+=|\\<>?;:,.·ㆍ]'), ' '),
+    );
+  }
+
+  String _cleanPastedSongLine(String rawLine) {
+    var line = rawLine.trim().replaceAll(RegExp(r'\s+'), ' ');
+    line = line.replaceFirst(RegExp(r'^#\d+\s+(?=.*\s(?:-|–|—|/)\s)'), '');
+    line = line.replaceFirst(RegExp(r'^[+\-*•]\s*'), '');
+    line = line.replaceFirst(RegExp(r'^\d+(?:[\.\)]\s*|\s+)'), '');
+    line = line.replaceFirst(RegExp(r'^[+\-*•]\s*'), '');
+    return line
+        .replaceAll(RegExp(r'''["“”‘’]'''), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
 
+  bool _isHashNumberedArtistTitleLine(String line) {
+    return RegExp(r'^#\d+\s+.+\s(?:-|–|—|/)\s.+$').hasMatch(line.trim());
+  }
+
   String _inferPastedArtist(String text) {
-    var checkedLineCount = 0;
-    for (final rawLine in const LineSplitter().convert(text)) {
-      final line = rawLine.trim();
-      if (line.isEmpty) {
-        continue;
-      }
+    final lines = const LineSplitter()
+        .convert(text)
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    final topLines = lines.take(5).toList();
 
-      checkedLineCount++;
-      if (checkedLineCount > 5) {
-        break;
+    for (final line in topLines) {
+      final bracketArtist = _artistFromBracketHeader(line);
+      if (bracketArtist.isNotEmpty) {
+        return bracketArtist;
       }
+    }
 
+    for (final line in topLines) {
+      final quotedArtist = _artistFromCornerBrackets(line);
+      if (quotedArtist.isNotEmpty) {
+        return quotedArtist;
+      }
+    }
+
+    for (final line in topLines) {
+      final hashtagArtist = _artistFromHeaderHashtags(line);
+      if (hashtagArtist.isNotEmpty) {
+        return hashtagArtist;
+      }
+    }
+
+    if (lines.isNotEmpty) {
+      final lastHashtagArtist = _artistFromSingleHashtagLine(lines.last);
+      if (lastHashtagArtist.isNotEmpty) {
+        return lastHashtagArtist;
+      }
+    }
+
+    for (final line in topLines) {
       final candidate = _cleanPastedHeaderArtist(line);
       if (candidate.isNotEmpty) {
         return candidate;
@@ -1646,14 +1771,134 @@ class _TodaySongPageState extends State<TodaySongPage> {
     return '';
   }
 
+  String _artistFromBracketHeader(String line) {
+    final match = RegExp(r'\[([^\]]+)\]').firstMatch(line);
+    if (match == null) {
+      return '';
+    }
+
+    final inner = match.group(1) ?? '';
+    if (_containsHeaderKeyword(inner)) {
+      return '';
+    }
+
+    final candidate = _cleanArtistCandidate(inner.split('/').first);
+    return _looksLikeArtistCandidate(candidate) ? candidate : '';
+  }
+
+  bool _isBracketedSetlistHeader(String line) {
+    final match = RegExp(r'\[([^\]]+)\]').firstMatch(line);
+    if (match == null) {
+      return false;
+    }
+
+    return _containsHeaderKeyword(match.group(1) ?? '');
+  }
+
+  String _artistFromCornerBrackets(String line) {
+    final match = RegExp(r'《([^》]+)》').firstMatch(line);
+    if (match == null) {
+      return '';
+    }
+
+    final candidate = _cleanArtistCandidate(match.group(1) ?? '');
+    return _looksLikeArtistCandidate(candidate) ? candidate : '';
+  }
+
+  String _artistFromHeaderHashtags(String line) {
+    final matches = RegExp(r'#([^\s#]+)').allMatches(line).toList();
+    if (matches.isEmpty) {
+      return '';
+    }
+
+    final setlistIndex = line.toLowerCase().indexOf('setlist');
+    final koreanSetlistIndex = line.indexOf(_kSetlist);
+    final markerIndex = [setlistIndex, koreanSetlistIndex]
+        .where((index) => index >= 0)
+        .fold<int?>(null, (best, index) {
+          if (best == null || index < best) {
+            return index;
+          }
+          return best;
+        });
+
+    final candidates = matches
+        .where((match) => markerIndex == null || match.start < markerIndex)
+        .map((match) => match.group(1) ?? '')
+        .where((tag) => !RegExp(r'^\d+$').hasMatch(tag))
+        .where((tag) => !_isGenericArtistHashtag(tag))
+        .toList();
+
+    if (candidates.isEmpty) {
+      return '';
+    }
+
+    final candidate = _cleanArtistCandidate(candidates.last);
+    return _looksLikeArtistCandidate(candidate) ? candidate : '';
+  }
+
+  String _artistFromSingleHashtagLine(String line) {
+    final match = RegExp(r'^#([^\s#]+)$').firstMatch(line.trim());
+    if (match == null) {
+      return '';
+    }
+
+    final tag = match.group(1) ?? '';
+    if (RegExp(r'^\d+$').hasMatch(tag) || _isGenericArtistHashtag(tag)) {
+      return '';
+    }
+
+    final candidate = _cleanArtistCandidate(tag);
+    return _looksLikeArtistCandidate(candidate) ? candidate : '';
+  }
+
+  String _cleanArtistCandidate(String value) {
+    return value
+        .replaceAll(
+          RegExp(r'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]', unicode: true),
+          '',
+        )
+        .replaceAll(RegExp(r'[#\[\]《》]'), '')
+        .replaceAll(RegExp(r'\b\d{6}\b|\b\d{8}\b'), ' ')
+        .replaceAll(RegExp(r'\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  bool _isGenericArtistHashtag(String tag) {
+    final normalized = tag.trim().replaceFirst('#', '').toLowerCase();
+    return {
+      'setlist',
+      '셋리스트',
+      '버스킹',
+      '공연',
+      '콘서트',
+      '라이브',
+      '페스티벌',
+      'festival',
+      '영화제',
+      '뷰민라',
+      '무주산골영화제',
+    }.contains(normalized);
+  }
+
   String _cleanPastedHeaderArtist(String line) {
+    if (_isBracketedSetlistHeader(line)) {
+      return '';
+    }
+
     final colonIndex = line.indexOf(':');
     if (colonIndex >= 0) {
       final left = line.substring(0, colonIndex).trim();
-      final right = line.substring(colonIndex + 1).trim();
+      final right = _cleanArtistCandidate(line.substring(colonIndex + 1));
       if (_looksLikeEventHeader(left) && _looksLikeArtistCandidate(right)) {
         return right;
       }
+    }
+
+    final concertKeywordArtist = _artistFromConcertKeywordHeader(line);
+    if (concertKeywordArtist.isNotEmpty) {
+      return concertKeywordArtist;
     }
 
     final hasHeaderMarker =
@@ -1680,13 +1925,87 @@ class _TodaySongPageState extends State<TodaySongPage> {
     return _looksLikeArtistCandidate(candidate) ? candidate : '';
   }
 
+  String _artistFromConcertKeywordHeader(String line) {
+    final cleaned = _cleanArtistCandidate(line);
+    final withoutSetlist = cleaned
+        .replaceAll(RegExp('$_kSetlist|setlist', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final upper = withoutSetlist.toUpperCase();
+    const englishKeywords = [
+      'SNIPPET CONCERT',
+      'BUSKING CONCERT',
+      'CONCERT',
+      'LIVE',
+      'STAGE',
+      'FESTIVAL',
+      'SHOW',
+    ];
+
+    for (final keyword in englishKeywords) {
+      final index = upper.indexOf(keyword);
+      if (index < 0) {
+        continue;
+      }
+
+      final before = _cleanArtistCandidate(withoutSetlist.substring(0, index));
+      if (_looksLikeArtistCandidate(before)) {
+        return before;
+      }
+
+      final after = _cleanArtistCandidate(
+        withoutSetlist
+            .substring(index + keyword.length)
+            .replaceAll(
+              RegExp(r'\bwith\s+friends\b', caseSensitive: false),
+              '',
+            ),
+      );
+      if (_looksLikeArtistCandidate(after)) {
+        return after;
+      }
+    }
+
+    for (final keyword in [_kConcert, _kConcertKo, _kLiveKo, '페스티벌']) {
+      final index = withoutSetlist.indexOf(keyword);
+      if (index < 0) {
+        continue;
+      }
+
+      final before = _cleanArtistCandidate(withoutSetlist.substring(0, index));
+      if (_looksLikeArtistCandidate(before)) {
+        return before;
+      }
+
+      final after = _cleanArtistCandidate(
+        withoutSetlist.substring(index + keyword.length),
+      );
+      if (_looksLikeArtistCandidate(after)) {
+        return after;
+      }
+    }
+
+    return '';
+  }
+
   bool _isPastedMetaLine(String line, String inferredArtist, int lineIndex) {
     if (RegExp(r'^[=\-–—_\s]+$').hasMatch(line)) {
       return true;
     }
 
-    final lowerLine = line.toLowerCase();
-    if (lowerLine == 'setlist' || line == _kSetlist) {
+    final emojiStrippedLine = _cleanArtistCandidate(line);
+    final lowerLine = emojiStrippedLine.toLowerCase();
+    if (lowerLine == 'setlist' || emojiStrippedLine == _kSetlist) {
+      return true;
+    }
+
+    if (lineIndex <= 5 &&
+        (_artistFromBracketHeader(line).isNotEmpty ||
+            _isBracketedSetlistHeader(line))) {
+      return true;
+    }
+
+    if (_artistFromSingleHashtagLine(line).isNotEmpty) {
       return true;
     }
 
@@ -1694,7 +2013,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
       return true;
     }
 
-    if (lineIndex > 4) {
+    if (lineIndex <= 5 &&
+        (_looksLikeEventHeader(line) || _containsHeaderKeyword(line))) {
+      return true;
+    }
+
+    if (lineIndex > 5) {
       return false;
     }
 
@@ -1710,16 +2034,23 @@ class _TodaySongPageState extends State<TodaySongPage> {
     return headerArtist.toLowerCase() == inferredArtist.trim().toLowerCase();
   }
 
-  Song? _parsePastedSongLine(String line) {
+  Song? _parsePastedSongLine(
+    String line, {
+    required bool hasInferredArtist,
+    required bool forceArtistTitleOrder,
+  }) {
     if (line.isEmpty || RegExp(r'^[=\-–—_\s]+$').hasMatch(line)) {
       return null;
     }
 
-    final nonColonSeparatorMatch = RegExp(
-      r'\s*(?:-|–|—|/|,)\s*',
-    ).firstMatch(line);
-    final separatorMatch =
-        nonColonSeparatorMatch ?? RegExp(r'\s*:\s*').firstMatch(line);
+    final dashOrSlashMatch = RegExp(r'\s+(?:-|–|—|/)\s+').firstMatch(line);
+    final commaMatch = dashOrSlashMatch == null
+        ? RegExp(r'\s*,\s+').firstMatch(line)
+        : null;
+    final colonMatch = dashOrSlashMatch == null && commaMatch == null
+        ? RegExp(r'\s*:\s+').firstMatch(line)
+        : null;
+    final separatorMatch = dashOrSlashMatch ?? commaMatch ?? colonMatch;
     if (separatorMatch == null) {
       return null;
     }
@@ -1733,15 +2064,26 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final knownArtists = _knownArtistNamesForPaste();
     final leftIsArtist = _matchesKnownArtist(left, knownArtists);
     final rightIsArtist = _matchesKnownArtist(right, knownArtists);
-    final isColonSeparator =
-        nonColonSeparatorMatch == null && separatorMatch.group(0) != null;
+    final isColonSeparator = colonMatch != null;
 
     if (isColonSeparator && !leftIsArtist && !rightIsArtist) {
       return null;
     }
 
-    final artist = rightIsArtist && !leftIsArtist ? right : left;
-    final title = rightIsArtist && !leftIsArtist ? left : right;
+    if (hasInferredArtist && !leftIsArtist && !rightIsArtist) {
+      return null;
+    }
+
+    final shouldReverse =
+        !forceArtistTitleOrder && rightIsArtist && !leftIsArtist ||
+        (!forceArtistTitleOrder &&
+            !hasInferredArtist &&
+            dashOrSlashMatch != null &&
+            _looksLikePerformerCredit(right) &&
+            !leftIsArtist &&
+            !_looksLikeNumericArtistName(left));
+    final artist = shouldReverse ? right : left;
+    final title = shouldReverse ? left : right;
 
     if (artist.isEmpty || title.isEmpty) {
       return null;
@@ -1750,7 +2092,38 @@ class _TodaySongPageState extends State<TodaySongPage> {
     return Song(artist: artist, title: title, tags: const []);
   }
 
-  String? _parseTitleOnlyPastedLine(String line) {
+  bool _looksLikePerformerCredit(String value) {
+    final performer = value.trim();
+    if (performer.isEmpty || performer.length > 24 || performer.contains(' ')) {
+      return false;
+    }
+
+    if (performer == '듀엣') {
+      return true;
+    }
+
+    final names = performer.split(RegExp(r'[&·]'));
+    if (names.length > 1) {
+      return names.every(_looksLikeKoreanPerformerName);
+    }
+
+    return _looksLikeKoreanPerformerName(performer);
+  }
+
+  bool _looksLikeKoreanPerformerName(String value) {
+    final name = value.trim();
+    return RegExp(r'^[가-힣]{3,4}$').hasMatch(name);
+  }
+
+  bool _looksLikeNumericArtistName(String value) {
+    final candidate = value.trim();
+    return RegExp(r'\d.*[A-Za-z가-힣]|[A-Za-z가-힣].*\d').hasMatch(candidate);
+  }
+
+  String? _parseTitleOnlyPastedLine(
+    String line, {
+    required bool allowSeparators,
+  }) {
     if (line.isEmpty || RegExp(r'^[=\-–—_\s]+$').hasMatch(line)) {
       return null;
     }
@@ -1770,7 +2143,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       return null;
     }
 
-    if (RegExp(r'\s*(?:-|–|—|/|,)\s*').hasMatch(line)) {
+    if (!allowSeparators && RegExp(r'\s+(?:-|–|—|/|,)\s+').hasMatch(line)) {
       return null;
     }
 
@@ -1786,10 +2159,14 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final lowerValue = value.toLowerCase();
     return lowerValue.contains('setlist') ||
         lowerValue.contains('live') ||
+        lowerValue.contains('busking') ||
         value.contains(_kSetlist) ||
         value.contains(_kConcert) ||
         value.contains(_kConcertKo) ||
-        value.contains(_kLiveKo);
+        value.contains(_kLiveKo) ||
+        value.contains('버스킹') ||
+        value.contains('영화제') ||
+        value.contains('페스티벌');
   }
 
   bool _looksLikeEventHeader(String value) {
@@ -1799,6 +2176,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
         lowerValue.contains('stage') ||
         lowerValue.contains('festival') ||
         lowerValue.contains('concert') ||
+        lowerValue.contains('road to') ||
+        lowerValue.contains('busking') ||
+        value.contains('영화제') ||
+        value.contains('페스티벌') ||
+        value.contains('부락') ||
         lowerValue.contains(' in ');
   }
 
@@ -1866,6 +2248,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   void _showArtistSongsDialog(String artist, {VoidCallback? onSongChanged}) {
+    var songSortMode = SongListSortMode.added;
+
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
@@ -1874,6 +2258,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
             final songs = _songs
                 .where((song) => song.artist == artist)
                 .toList();
+            if (songSortMode == SongListSortMode.title) {
+              songs.sort(
+                (a, b) =>
+                    a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+              );
+            }
             final compactButtonStyle = TextButton.styleFrom(
               minimumSize: const Size(40, 36),
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1890,77 +2280,109 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 ),
                 child: SizedBox(
                   width: double.maxFinite,
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: songs.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 10),
-                    itemBuilder: (context, index) {
-                      final song = songs[index];
-                      final hasLink = _hasSongLink(song);
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 5),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                song.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SegmentedButton<SongListSortMode>(
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(
+                              value: SongListSortMode.added,
+                              label: Text('추가순'),
                             ),
-                            const SizedBox(width: 8),
-                            TextButton(
-                              onPressed: () => _openSongLinkOrYoutube(song),
-                              style: compactButtonStyle,
-                              child: Text(
-                                _compactSongOpenButtonLabel(song),
-                                style: TextStyle(
-                                  color: hasLink ? tdmLinkBlue : null,
-                                  fontWeight: hasLink
-                                      ? FontWeight.w800
-                                      : FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                _showEditSongDialog(
-                                  song,
-                                  onSongUpdated: () {
-                                    refreshDialog(() {});
-                                    onSongChanged?.call();
-                                  },
-                                );
-                              },
-                              style: compactButtonStyle,
-                              child: const Text('수정'),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                _showDeleteSongDialog(
-                                  song,
-                                  onDeleted: () {
-                                    if (songs.length == 1) {
-                                      Navigator.of(dialogContext).pop();
-                                    }
-                                    refreshDialog(() {});
-                                    onSongChanged?.call();
-                                  },
-                                );
-                              },
-                              style: compactButtonStyle,
-                              child: const Text('삭제'),
+                            ButtonSegment(
+                              value: SongListSortMode.title,
+                              label: Text('곡명순'),
                             ),
                           ],
+                          selected: {songSortMode},
+                          onSelectionChanged: (selection) {
+                            refreshDialog(() {
+                              songSortMode = selection.first;
+                            });
+                          },
                         ),
-                      );
-                    },
+                      ),
+                      const SizedBox(height: 8),
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: songs.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 10),
+                          itemBuilder: (context, index) {
+                            final song = songs[index];
+                            final hasLink = _hasSongLink(song);
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 5),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      song.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  TextButton(
+                                    onPressed: () =>
+                                        _openSongLinkOrYoutube(song),
+                                    style: compactButtonStyle,
+                                    child: Text(
+                                      _compactSongOpenButtonLabel(song),
+                                      style: TextStyle(
+                                        color: hasLink ? tdmLinkBlue : null,
+                                        fontWeight: hasLink
+                                            ? FontWeight.w800
+                                            : FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      _showEditSongDialog(
+                                        song,
+                                        onSongUpdated: () {
+                                          refreshDialog(() {});
+                                          onSongChanged?.call();
+                                        },
+                                      );
+                                    },
+                                    style: compactButtonStyle,
+                                    child: const Text('수정'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      _showDeleteSongDialog(
+                                        song,
+                                        onDeleted: () {
+                                          if (songs.length == 1) {
+                                            Navigator.of(dialogContext).pop();
+                                          }
+                                          refreshDialog(() {});
+                                          onSongChanged?.call();
+                                        },
+                                      );
+                                    },
+                                    style: compactButtonStyle,
+                                    child: const Text('삭제'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2161,7 +2583,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
                               onOpenLink: () =>
                                   _openSponsorLink(_mainAd.linkUrl),
                               onPickSponsorSong: _pickMainSponsorSong,
-                              onPickRandomSong: _pickRandomSong,
+                            ),
+                            const SizedBox(height: 16),
+                            _PickSongButton(
+                              label:
+                                  '\uC624\uB298\uC758 \uD55C \uACE1 \uBF51\uAE30',
+                              onPressed: _pickRandomSong,
                             ),
                           ],
                         ],
@@ -2904,14 +3331,12 @@ class MainSponsorPanel extends StatelessWidget {
   final MainSponsorAd ad;
   final VoidCallback onOpenLink;
   final VoidCallback onPickSponsorSong;
-  final VoidCallback onPickRandomSong;
 
   const MainSponsorPanel({
     super.key,
     required this.ad,
     required this.onOpenLink,
     required this.onPickSponsorSong,
-    required this.onPickRandomSong,
   });
 
   @override
@@ -2921,7 +3346,6 @@ class MainSponsorPanel extends StatelessWidget {
     final hasMessage = ad.message.trim().isNotEmpty;
     final song = ad.song;
     final songLabel = song == null ? '' : '${song.artist} - ${song.title}';
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -2994,11 +3418,7 @@ class MainSponsorPanel extends StatelessWidget {
             children: [
               FilledButton(
                 onPressed: onPickSponsorSong,
-                child: const Text('오늘의 추천곡 뽑기', maxLines: 1),
-              ),
-              OutlinedButton(
-                onPressed: onPickRandomSong,
-                child: const Text('오늘의 한 곡 뽑기', maxLines: 1),
+                child: const Text('추천곡 뽑기', maxLines: 1),
               ),
             ],
           ),

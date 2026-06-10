@@ -15,20 +15,8 @@ const List<Song> sampleSongs = [
     tags: ['#엔플라잉'],
     link: 'https://youtu.be/b3xubrV7nnk?si=iJEEBndvqwEiohMZ',
   ),
-  Song(
-    artist: '원위',
-    title: '야행성',
-    memo: '',
-    tags: ['#원위', '#밴드'],
-    link: '',
-  ),
-  Song(
-    artist: '원위',
-    title: '비를 몰고 오는 소년',
-    memo: '',
-    tags: ['#원위'],
-    link: '',
-  ),
+  Song(artist: '원위', title: '야행성', memo: '', tags: ['#원위', '#밴드'], link: ''),
+  Song(artist: '원위', title: '비를 몰고 오는 소년', memo: '', tags: ['#원위'], link: ''),
   Song(
     artist: '터치드',
     title: 'Highlight',
@@ -36,13 +24,7 @@ const List<Song> sampleSongs = [
     tags: ['#터치드', '#밴드'],
     link: '',
   ),
-  Song(
-    artist: '터치드',
-    title: '야경',
-    memo: '',
-    tags: ['#터치드'],
-    link: '',
-  ),
+  Song(artist: '터치드', title: '야경', memo: '', tags: ['#터치드'], link: ''),
   Song(
     artist: 'Xdinary Heroes',
     title: 'save me',
