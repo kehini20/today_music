@@ -114,7 +114,7 @@ class SongStorage {
 
 enum PasteSongCandidateStatus { newSong, existing, needsReview }
 
-enum ArtistSortMode { added, name }
+enum ArtistSortMode { added, name, songCount }
 
 enum SongListSortMode { added, title }
 
@@ -1158,10 +1158,21 @@ class _TodaySongPageState extends State<TodaySongPage> {
           builder: (context, refreshSheet) {
             final groupedSongs = songsByArtist(_songs);
             final artistEntries = groupedSongs.entries.toList();
-            if (_artistSortMode == ArtistSortMode.name) {
-              artistEntries.sort(
-                (a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()),
-              );
+            switch (_artistSortMode) {
+              case ArtistSortMode.added:
+                break;
+              case ArtistSortMode.name:
+                artistEntries.sort(
+                  (a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()),
+                );
+              case ArtistSortMode.songCount:
+                artistEntries.sort((a, b) {
+                  final countCompare = b.value.length.compareTo(a.value.length);
+                  if (countCompare != 0) {
+                    return countCompare;
+                  }
+                  return a.key.toLowerCase().compareTo(b.key.toLowerCase());
+                });
             }
             final colorScheme = Theme.of(bottomSheetContext).colorScheme;
             final maxHeight =
@@ -1193,7 +1204,33 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () {
+                                _showSongAddMenu(
+                                  onSongAdded: () => refreshSheet(() {}),
+                                );
+                              },
+                              child: const Text('곡 추가하기', maxLines: 1),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                _showSongBackupMenu(
+                                  onSongsImported: () => refreshSheet(() {}),
+                                );
+                              },
+                              child: const Text('목록 백업', maxLines: 1),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: SegmentedButton<ArtistSortMode>(
@@ -1207,6 +1244,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
                               value: ArtistSortMode.name,
                               label: Text('가수명순'),
                             ),
+                            ButtonSegment(
+                              value: ArtistSortMode.songCount,
+                              label: Text('곡수순'),
+                            ),
                           ],
                           selected: {_artistSortMode},
                           onSelectionChanged: (selection) {
@@ -1217,41 +1258,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          FilledButton(
-                            onPressed: () {
-                              _showAddSongDialog(
-                                onSongAdded: () => refreshSheet(() {}),
-                              );
-                            },
-                            child: const Text('곡 추가'),
-                          ),
-                          OutlinedButton(
-                            onPressed: () {
-                              _showPasteSongsDialog(
-                                onSongsAdded: () => refreshSheet(() {}),
-                              );
-                            },
-                            child: const Text('붙여넣기로 추가'),
-                          ),
-                          OutlinedButton(
-                            onPressed: _exportSongs,
-                            child: const Text('내보내기'),
-                          ),
-                          OutlinedButton(
-                            onPressed: () {
-                              _importSongs(
-                                onSongsImported: () => refreshSheet(() {}),
-                              );
-                            },
-                            child: const Text('불러오기'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
                       ...artistEntries.map(
                         (entry) => ArtistSongGroupTile(
                           artist: entry.key,
@@ -1286,6 +1292,90 @@ class _TodaySongPageState extends State<TodaySongPage> {
             _addSong(song);
             onSongAdded?.call();
           },
+        );
+      },
+    );
+  }
+
+  void _showSongAddMenu({VoidCallback? onSongAdded}) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (menuContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '곡 추가하기',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () {
+                    Navigator.of(menuContext).pop();
+                    _showAddSongDialog(onSongAdded: onSongAdded);
+                  },
+                  child: const Text('개별 곡 추가'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: () {
+                    Navigator.of(menuContext).pop();
+                    _showPasteSongsDialog(onSongsAdded: onSongAdded);
+                  },
+                  child: const Text('붙여넣기 추가'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSongBackupMenu({VoidCallback? onSongsImported}) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (menuContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '목록 백업',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () {
+                    Navigator.of(menuContext).pop();
+                    _exportSongs();
+                  },
+                  child: const Text('내보내기'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: () {
+                    Navigator.of(menuContext).pop();
+                    _importSongs(onSongsImported: onSongsImported);
+                  },
+                  child: const Text('불러오기'),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -3376,6 +3466,7 @@ class MainSponsorPanel extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               '후원자 픽',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: colorScheme.onSurfaceVariant,
                 fontSize: 11,
@@ -3388,6 +3479,7 @@ class MainSponsorPanel extends StatelessWidget {
                 songLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: colorScheme.onSurface,
                   fontSize: 16,
@@ -3402,6 +3494,7 @@ class MainSponsorPanel extends StatelessWidget {
                 ad.message,
                 maxLines: 5,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: colorScheme.onSurface,
                   fontSize: 14,
@@ -3412,15 +3505,12 @@ class MainSponsorPanel extends StatelessWidget {
             ],
           ],
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton(
-                onPressed: onPickSponsorSong,
-                child: const Text('추천곡 뽑기', maxLines: 1),
-              ),
-            ],
+          OutlinedButton(
+            onPressed: onPickSponsorSong,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+            ),
+            child: const Text('추천곡 뽑기', maxLines: 1),
           ),
         ],
       ),
