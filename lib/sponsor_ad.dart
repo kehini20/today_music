@@ -14,7 +14,7 @@ const String adConfigUrl = String.fromEnvironment(
 const String fallbackBottomAdAssetPath =
     'assets/ads/ad_tdm_bottom_fallback.png';
 
-const String fallbackMainAdAssetPath = 'assets/ads/ad_tdm_main.png';
+const String fallbackMainAdAssetPath = 'assets/ads/ad_tdm_main_fallback.png';
 
 class SponsorAd {
   final String id;
@@ -50,6 +50,20 @@ class SponsorAd {
       message: json['message']?.toString().trim() ?? '',
       imageUrl: json['imageUrl']?.toString().trim() ?? '',
       linkUrl: json['linkUrl']?.toString().trim() ?? '',
+    );
+  }
+
+  SponsorAd copyWith({String? imageUrl}) {
+    return SponsorAd(
+      id: id,
+      slot: slot,
+      startAt: startAt,
+      endAt: endAt,
+      enabled: enabled,
+      title: title,
+      message: message,
+      imageUrl: imageUrl ?? this.imageUrl,
+      linkUrl: linkUrl,
     );
   }
 }
@@ -92,6 +106,21 @@ class MainSponsorAd {
       message: json['message']?.toString().trim() ?? '',
       linkUrl: json['linkUrl']?.toString().trim() ?? '',
       song: _songFromJson(json['song']),
+    );
+  }
+
+  MainSponsorAd copyWith({String? imageUrl}) {
+    return MainSponsorAd(
+      id: id,
+      slot: slot,
+      startAt: startAt,
+      endAt: endAt,
+      enabled: enabled,
+      imageUrl: imageUrl ?? this.imageUrl,
+      fallbackAsset: fallbackAsset,
+      message: message,
+      linkUrl: linkUrl,
+      song: song,
     );
   }
 }
@@ -149,8 +178,14 @@ Future<SponsorAdConfig> loadSponsorAdConfig({
     }
 
     final now = DateTime.now();
-    final bottomAd = _selectBottomAd(decoded, now, configUrl);
-    final mainAd = _selectMainAd(decoded, now);
+    final bottomAd = _resolveSponsorAdImageUrl(
+      _selectBottomAd(decoded, now, configUrl),
+      configUrl,
+    );
+    final selectedMainAd = _selectMainAd(decoded, now);
+    final mainAd = selectedMainAd == null
+        ? null
+        : _resolveMainSponsorAdImageUrl(selectedMainAd, configUrl);
 
     debugPrint(
       'SponsorAd loaded: enabled=${bottomAd.enabled}, imageUrl=${bottomAd.imageUrl}',
@@ -174,6 +209,82 @@ Future<SponsorAdConfig> loadSponsorAdConfig({
 Future<SponsorAd> loadBottomSponsorAd({String configUrl = adConfigUrl}) async {
   final config = await loadSponsorAdConfig(configUrl: configUrl);
   return config.bottomAd;
+}
+
+SponsorAd _resolveSponsorAdImageUrl(SponsorAd ad, String configUrl) {
+  return ad.copyWith(
+    imageUrl: _resolveAdImageUrl(ad.imageUrl, configUrl, ad.id),
+  );
+}
+
+MainSponsorAd _resolveMainSponsorAdImageUrl(
+  MainSponsorAd ad,
+  String configUrl,
+) {
+  return ad.copyWith(
+    imageUrl: _resolveAdImageUrl(ad.imageUrl, configUrl, ad.id),
+  );
+}
+
+String _resolveAdImageUrl(String imageUrl, String configUrl, String adId) {
+  final trimmed = imageUrl.trim();
+  if (trimmed.isEmpty) {
+    return '';
+  }
+
+  final imageUri = Uri.tryParse(trimmed);
+  if (imageUri != null && imageUri.hasScheme) {
+    return trimmed;
+  }
+
+  final configUri = Uri.tryParse(configUrl);
+  if (configUri == null || !configUri.hasScheme) {
+    debugPrint(
+      'SponsorAd imageUrl left unresolved: id=$adId, imageUrl=$trimmed, configUrl=$configUrl',
+    );
+    return trimmed;
+  }
+
+  final normalizedPath = trimmed.replaceAll('\\', '/');
+  final resolved = normalizedPath.startsWith('ads/')
+      ? configUri.replace(
+          path: _joinUriPath(
+            _siteBasePathFromConfig(configUri.path),
+            normalizedPath,
+          ),
+          query: null,
+          fragment: null,
+        )
+      : configUri.resolve(normalizedPath);
+  final resolvedText = resolved.toString();
+
+  debugPrint(
+    'SponsorAd imageUrl resolved: id=$adId, imageUrl=$trimmed, resolved=$resolvedText',
+  );
+  return resolvedText;
+}
+
+String _siteBasePathFromConfig(String configPath) {
+  final adsIndex = configPath.indexOf('/ads/');
+  if (adsIndex >= 0) {
+    return configPath.substring(0, adsIndex + 1);
+  }
+
+  final lastSlashIndex = configPath.lastIndexOf('/');
+  if (lastSlashIndex < 0) {
+    return '/';
+  }
+
+  return configPath.substring(0, lastSlashIndex + 1);
+}
+
+String _joinUriPath(String basePath, String relativePath) {
+  final normalizedBase = basePath.endsWith('/') ? basePath : '$basePath/';
+  final normalizedRelative = relativePath.startsWith('/')
+      ? relativePath.substring(1)
+      : relativePath;
+
+  return '$normalizedBase$normalizedRelative';
 }
 
 SponsorAd _selectBottomAd(

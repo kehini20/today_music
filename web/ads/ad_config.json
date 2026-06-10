@@ -1,78 +1,107 @@
 {
   "mainAds": [
     {
-      "id": "main_sample_002_active",
+      "id": "main_sample_001_active",
       "slot": 1,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
-      "title": "TDM main sample",
-      "message": "Ad sponsor sample. You can test a recommendation song, promo link, and support message here.",
-      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_002.png",
+      "title": "TDM main sample 001",
+      "message": "Ad sponsor sample 001. This active candidate tests main ad rotation.",
+      "imageUrl": "ads/ad_tdm_main_self_001.png",
       "linkUrl": "https://tangerine-nougat-072e10.netlify.app",
       "song": {
         "artist": "TDM",
-        "title": "Ad Image Sample",
-        "memo": "Sponsor recommendation sample",
+        "title": "Ad Image Sample 001",
+        "memo": "Sponsor recommendation sample 001",
+        "tags": "ad,sponsor,sample",
+        "link": "https://tangerine-nougat-072e10.netlify.app"
+      }
+    },
+    {
+      "id": "main_sample_002_active",
+      "slot": 2,
+      "enabled": true,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-06-11T23:59:59+09:00",
+      "title": "TDM main sample 002",
+      "message": "Ad sponsor sample 002. This active candidate tests main ad rotation.",
+      "imageUrl": "ads/ad_tdm_main_self_002.png",
+      "linkUrl": "https://tangerine-nougat-072e10.netlify.app",
+      "song": {
+        "artist": "TDM",
+        "title": "Ad Image Sample 002",
+        "memo": "Sponsor recommendation sample 002",
         "tags": "ad,sponsor,sample",
         "link": "https://tangerine-nougat-072e10.netlify.app"
       }
     },
     {
       "id": "main_sample_002_future",
-      "slot": 2,
+      "slot": 3,
       "enabled": true,
       "startAt": "2026-12-01T00:00:00+09:00",
       "endAt": "2026-12-02T23:59:59+09:00",
       "title": "Future main sample",
       "message": "This future ad should not be active yet.",
-      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_002.png",
+      "imageUrl": "ads/ad_tdm_main_self_002.png",
       "linkUrl": ""
     },
     {
       "id": "main_sample_002_disabled",
-      "slot": 3,
+      "slot": 4,
       "enabled": false,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
       "title": "Disabled main sample",
       "message": "This disabled ad should not be active.",
-      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_002.png",
+      "imageUrl": "ads/ad_tdm_main_self_002.png",
       "linkUrl": ""
     }
   ],
   "bottomAds": [
     {
-      "id": "bottom_sample_002_active",
+      "id": "bottom_sample_001_active",
       "slot": 1,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
-      "title": "TDM bottom sample",
-      "message": "Bottom banner sample.",
-      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_002.png",
+      "title": "TDM bottom sample 001",
+      "message": "Bottom banner sample 001.",
+      "imageUrl": "ads/ad_tdm_bottom_self_001.png",
+      "linkUrl": "https://tangerine-nougat-072e10.netlify.app"
+    },
+    {
+      "id": "bottom_sample_002_active",
+      "slot": 2,
+      "enabled": true,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-06-11T23:59:59+09:00",
+      "title": "TDM bottom sample 002",
+      "message": "Bottom banner sample 002.",
+      "imageUrl": "ads/ad_tdm_bottom_self_002.png",
       "linkUrl": "https://tangerine-nougat-072e10.netlify.app"
     },
     {
       "id": "bottom_sample_002_future",
-      "slot": 2,
+      "slot": 3,
       "enabled": true,
       "startAt": "2026-12-01T00:00:00+09:00",
       "endAt": "2026-12-02T23:59:59+09:00",
       "title": "Future bottom sample",
       "message": "This future bottom banner should not be active yet.",
-      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_002.png",
+      "imageUrl": "ads/ad_tdm_bottom_self_002.png",
       "linkUrl": ""
     },
     {
       "id": "bottom_sample_002_disabled",
-      "slot": 3,
+      "slot": 4,
       "enabled": false,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
       "title": "Disabled bottom sample",
       "message": "This disabled bottom banner should not be active.",
-      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_002.png",
+      "imageUrl": "ads/ad_tdm_bottom_self_002.png",
       "linkUrl": ""
     }
   ]
