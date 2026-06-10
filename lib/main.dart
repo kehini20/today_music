@@ -18,6 +18,18 @@ void main() {
   runApp(const TodayMusicApp());
 }
 
+const Color tdmPrimary = Color(0xFF12CDB3);
+const Color tdmPrimaryDark = Color(0xFF0FAF9A);
+const Color tdmSky = Color(0xFF87D3FF);
+const Color tdmLime = Color(0xFFEBF195);
+const Color tdmLimeText = Color(0xFFC9D94F);
+const Color tdmBackground = Color(0xFFF6FFFC);
+const Color tdmCardBackground = Color(0xFFEFFFFB);
+const Color tdmTextMain = Color(0xFF173A3A);
+const Color tdmTextSub = Color(0xFF5F7474);
+const Color tdmBorder = Color(0xFFB7E8E1);
+const Color tdmLinkBlue = Color(0xFF3A8FC3);
+
 class SongStorage {
   static const String _songsKey = 'tdm_alpha_songs';
   static const String _samplePromptCheckedKey = 'sample_prompt_checked';
@@ -109,36 +121,50 @@ class TodayMusicApp extends StatelessWidget {
       title: '오늘의 한 곡',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF4DB6AC),
-          primary: const Color(0xFF00897B),
-          surface: const Color(0xFFEEF8F6),
-        ),
-        scaffoldBackgroundColor: const Color(0xFFEEF8F6),
+        colorScheme:
+            ColorScheme.fromSeed(
+              seedColor: tdmPrimary,
+              surface: tdmBackground,
+            ).copyWith(
+              primary: tdmPrimary,
+              secondary: tdmSky,
+              tertiary: tdmLime,
+              primaryContainer: tdmCardBackground,
+              onPrimaryContainer: tdmTextMain,
+              surface: tdmBackground,
+              surfaceContainerHigh: Colors.white,
+              surfaceContainerHighest: tdmCardBackground,
+              outline: tdmBorder,
+              outlineVariant: tdmBorder,
+              onSurface: tdmTextMain,
+              onSurfaceVariant: tdmTextSub,
+            ),
+        scaffoldBackgroundColor: tdmBackground,
         useMaterial3: true,
         fontFamily: 'Roboto',
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFEEF8F6),
-          foregroundColor: Color(0xFF004D40),
+          backgroundColor: tdmBackground,
+          foregroundColor: tdmTextMain,
         ),
         checkboxTheme: CheckboxThemeData(
           fillColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const Color(0xFF00897B);
+              return tdmPrimary;
             }
             return null;
           }),
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF00897B),
+            backgroundColor: tdmPrimary,
             foregroundColor: Colors.white,
           ),
         ),
         outlinedButtonTheme: OutlinedButtonThemeData(
           style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF00695C),
-            side: const BorderSide(color: Color(0xFF80CBC4)),
+            foregroundColor: tdmPrimaryDark,
+            backgroundColor: Colors.white,
+            side: const BorderSide(color: tdmBorder),
           ),
         ),
       ),
@@ -1242,9 +1268,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                               child: Text(
                                 _compactSongOpenButtonLabel(song),
                                 style: TextStyle(
-                                  color: hasLink
-                                      ? const Color(0xFF2679A8)
-                                      : null,
+                                  color: hasLink ? tdmLinkBlue : null,
                                   fontWeight: hasLink
                                       ? FontWeight.w800
                                       : FontWeight.w500,

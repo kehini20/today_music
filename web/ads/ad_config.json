@@ -1,46 +1,79 @@
 {
   "mainAds": [
     {
-      "id": "main_active_test_001",
+      "id": "main_sample_002_active",
       "slot": 1,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
-      "title": "오늘의 추천곡",
-      "message": "현재 노출 중인 메인 광고 테스트입니다.",
-      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_001.png",
-      "linkUrl": "https://youtu.be/99arhk9wdNE?si=8o1xkN0nfi8JYmJU",
+      "title": "TDM main sample",
+      "message": "Ad sponsor sample. You can test a recommendation song, promo link, and support message here.",
+      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_002.png",
+      "linkUrl": "https://tangerine-nougat-072e10.netlify.app",
       "song": {
-        "artist": "N.Flying",
-        "title": "환절기",
-        "memo": "후원자 추천곡",
-        "tags": "밴드,추천",
-        "link": "https://youtu.be/99arhk9wdNE?si=8o1xkN0nfi8JYmJU"
+        "artist": "TDM",
+        "title": "Ad Image Sample",
+        "memo": "Sponsor recommendation sample",
+        "tags": "ad,sponsor,sample",
+        "link": "https://tangerine-nougat-072e10.netlify.app"
       }
     },
     {
-      "id": "main_future_test_002",
+      "id": "main_sample_002_future",
       "slot": 2,
       "enabled": true,
       "startAt": "2026-12-01T00:00:00+09:00",
       "endAt": "2026-12-02T23:59:59+09:00",
-      "title": "미래 광고",
-      "message": "아직 보이면 안 되는 광고입니다.",
-      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_001.png",
+      "title": "Future main sample",
+      "message": "This future ad should not be active yet.",
+      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_002.png",
+      "linkUrl": ""
+    },
+    {
+      "id": "main_sample_002_disabled",
+      "slot": 3,
+      "enabled": false,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-06-11T23:59:59+09:00",
+      "title": "Disabled main sample",
+      "message": "This disabled ad should not be active.",
+      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_main_self_002.png",
       "linkUrl": ""
     }
   ],
   "bottomAds": [
     {
-      "id": "bottom_active_test_001",
+      "id": "bottom_sample_002_active",
       "slot": 1,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
-      "title": "오늘의 한 곡",
-      "message": "오늘도 한 곡 뽑아볼까요?",
-      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_001.png",
-      "linkUrl": "https://x.com/NFlyingofficial"
+      "title": "TDM bottom sample",
+      "message": "Bottom banner sample.",
+      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_002.png",
+      "linkUrl": "https://tangerine-nougat-072e10.netlify.app"
+    },
+    {
+      "id": "bottom_sample_002_future",
+      "slot": 2,
+      "enabled": true,
+      "startAt": "2026-12-01T00:00:00+09:00",
+      "endAt": "2026-12-02T23:59:59+09:00",
+      "title": "Future bottom sample",
+      "message": "This future bottom banner should not be active yet.",
+      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_002.png",
+      "linkUrl": ""
+    },
+    {
+      "id": "bottom_sample_002_disabled",
+      "slot": 3,
+      "enabled": false,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-06-11T23:59:59+09:00",
+      "title": "Disabled bottom sample",
+      "message": "This disabled bottom banner should not be active.",
+      "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_002.png",
+      "linkUrl": ""
     }
   ]
 }
