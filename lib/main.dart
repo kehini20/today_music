@@ -32,6 +32,7 @@ const Color tdmLinkBlue = Color(0xFF3A8FC3);
 
 class SongStorage {
   static const String _songsKey = 'tdm_alpha_songs';
+  static const String _songSetsKey = 'tdm_song_sets';
   static const String _samplePromptCheckedKey = 'sample_prompt_checked';
   static const String _defaultShareMessageKey = 'tdm_default_share_message';
   static const String _disabledRandomArtistsKey = 'tdm_disabled_random_artists';
@@ -73,6 +74,44 @@ class SongStorage {
       await preferences.setString(_songsKey, encodedSongs);
     } catch (_) {
       // Prototype persistence should never crash the app.
+    }
+  }
+
+  static Future<List<SongSet>> loadSongSets() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final rawJson = preferences.getString(_songSetsKey);
+
+      if (rawJson == null || rawJson.trim().isEmpty) {
+        return const [];
+      }
+
+      final decoded = jsonDecode(rawJson);
+
+      if (decoded is! List) {
+        return const [];
+      }
+
+      return decoded
+          .whereType<Map>()
+          .map(
+            (setJson) => SongSet.fromJson(Map<String, Object?>.from(setJson)),
+          )
+          .where((set) => set.name.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> saveSongSets(List<SongSet> sets) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final encodedSets = jsonEncode(sets.map((set) => set.toJson()).toList());
+
+      await preferences.setString(_songSetsKey, encodedSets);
+    } catch (_) {
+      // Set persistence should never crash the app.
     }
   }
 
@@ -140,11 +179,54 @@ class SongStorage {
   }
 }
 
+class SongSet {
+  final String id;
+  final String name;
+  final List<Song> songs;
+
+  const SongSet({required this.id, required this.name, required this.songs});
+
+  factory SongSet.fromJson(Map<String, Object?> json) {
+    final rawSongs = json['songs'];
+
+    return SongSet(
+      id: json['id']?.toString().trim() ?? '',
+      name: json['name']?.toString().trim() ?? '',
+      songs: rawSongs is List
+          ? rawSongs
+                .whereType<Map>()
+                .map(
+                  (songJson) =>
+                      Song.fromJson(Map<String, Object?>.from(songJson)),
+                )
+                .where(
+                  (song) => song.artist.isNotEmpty && song.title.isNotEmpty,
+                )
+                .toList()
+          : const [],
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'songs': songs.map((song) => song.toJson()).toList(),
+    };
+  }
+
+  SongSet copyWith({String? name, List<Song>? songs}) {
+    return SongSet(id: id, name: name ?? this.name, songs: songs ?? this.songs);
+  }
+}
+
 enum PasteSongCandidateStatus { newSong, existing, needsReview }
 
 enum ArtistSortMode { added, name, songCount }
 
 enum SongListSortMode { added, title }
+
+enum SongStorageTab { songs, sets }
 
 class PasteSongCandidate {
   final String sourceLine;
@@ -282,6 +364,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   bool _includeSongLink = true;
   ArtistSortMode _artistSortMode = ArtistSortMode.added;
   Set<String> _disabledRandomArtists = {};
+  List<SongSet> _songSets = [];
 
   @override
   void initState() {
@@ -298,6 +381,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   Future<void> _loadSavedSongs() async {
     final savedSongs = await SongStorage.loadSongs();
+    final savedSongSets = await SongStorage.loadSongSets();
     final disabledRandomArtists = await SongStorage.loadDisabledRandomArtists();
     final samplePromptChecked = await SongStorage.isSamplePromptChecked();
     final defaultShareMessage = await SongStorage.loadDefaultShareMessage();
@@ -310,6 +394,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       final loadedSongs = savedSongs ?? [];
       final existingArtists = songsByArtist(loadedSongs).keys.toSet();
       _songs = loadedSongs;
+      _songSets = _songSetsSyncedWithSongs(savedSongSets, loadedSongs);
       _disabledRandomArtists = disabledRandomArtists
           .where(existingArtists.contains)
           .toSet();
@@ -334,6 +419,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
     SongStorage.saveSongs(_songs);
   }
 
+  void _saveSongSets() {
+    SongStorage.saveSongSets(_songSets);
+  }
+
   void _saveDisabledRandomArtists() {
     SongStorage.saveDisabledRandomArtists(_disabledRandomArtists);
   }
@@ -343,6 +432,52 @@ class _TodaySongPageState extends State<TodaySongPage> {
     _disabledRandomArtists = _disabledRandomArtists
         .where(existingArtists.contains)
         .toSet();
+  }
+
+  List<SongSet> _songSetsSyncedWithSongs(List<SongSet> sets, List<Song> songs) {
+    final currentSongKeys = songs.map(_songDuplicateKey).toSet();
+
+    return sets
+        .map(
+          (set) => set.copyWith(
+            songs: set.songs
+                .where(
+                  (song) => currentSongKeys.contains(_songDuplicateKey(song)),
+                )
+                .toList(),
+          ),
+        )
+        .toList();
+  }
+
+  void _syncSongSetsWithSongs() {
+    _songSets = _songSetsSyncedWithSongs(_songSets, _songs);
+  }
+
+  void _replaceSongInSets(Song originalSong, Song updatedSong) {
+    final originalKey = _songDuplicateKey(originalSong);
+
+    _songSets = _songSets
+        .map(
+          (set) => set.copyWith(
+            songs: set.songs
+                .map(
+                  (song) => _songDuplicateKey(song) == originalKey
+                      ? updatedSong
+                      : song,
+                )
+                .toList(),
+          ),
+        )
+        .toList();
+  }
+
+  bool _hasSongSetNamed(String name, {String? exceptId}) {
+    final normalizedName = name.trim().toLowerCase();
+    return _songSets.any(
+      (set) =>
+          set.id != exceptId && set.name.trim().toLowerCase() == normalizedName,
+    );
   }
 
   Future<void> _loadSponsorAds() async {
@@ -1176,6 +1311,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _lastResultSong = null;
       _isSponsorPick = false;
       _disabledRandomArtists.clear();
+      _songSets.clear();
       _shareTextController.clear();
       _includeTodayTag = true;
       _includeSongLink = true;
@@ -1183,6 +1319,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     SongStorage.setSamplePromptChecked(true);
     _saveSongs();
     _saveDisabledRandomArtists();
+    _saveSongSets();
     _showRootSnackBar('저장된 곡 목록을 초기화했어요.');
   }
 
@@ -1193,6 +1330,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     });
     _saveSongs();
     _saveDisabledRandomArtists();
+    _saveSongSets();
 
     ScaffoldMessenger.of(
       context,
@@ -1211,6 +1349,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
       _songs[index] = updatedSong;
       didUpdate = true;
+      _replaceSongInSets(originalSong, updatedSong);
       _syncArtistFilterState();
 
       if (identical(_selectedSong, originalSong)) {
@@ -1230,6 +1369,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
     _saveSongs();
     _saveDisabledRandomArtists();
+    _saveSongSets();
 
     _showRootSnackBar('곡이 수정되었습니다.');
   }
@@ -1246,10 +1386,21 @@ class _TodaySongPageState extends State<TodaySongPage> {
     });
   }
 
+  void _runAfterFrame(VoidCallback callback) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      callback();
+    });
+  }
+
   void _deleteSong(Song song) {
     setState(() {
       _songs.remove(song);
       _syncArtistFilterState();
+      _syncSongSetsWithSongs();
       if (_selectedSong == song) {
         _selectedSong = null;
         _shareTextController.clear();
@@ -1265,6 +1416,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     });
     _saveSongs();
     _saveDisabledRandomArtists();
+    _saveSongSets();
 
     ScaffoldMessenger.of(
       context,
@@ -1298,6 +1450,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     setState(() {
       _songs.removeWhere((song) => song.artist == artist);
       _syncArtistFilterState();
+      _syncSongSetsWithSongs();
       if (shouldResetResult) {
         _selectedSong = null;
         _shareTextController.clear();
@@ -1312,6 +1465,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     });
     _saveSongs();
     _saveDisabledRandomArtists();
+    _saveSongSets();
     _showRootSnackBar('$artist 곡 ${songsToDelete.length}개를 삭제했어요.');
   }
 
@@ -1358,6 +1512,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (bottomSheetContext) {
+        var storageTab = SongStorageTab.songs;
+
         return StatefulBuilder(
           builder: (context, refreshSheet) {
             final groupedSongs = songsByArtist(_songs);
@@ -1409,113 +1565,138 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                _showPasteSongsDialog(
-                                  onSongsAdded: () => refreshSheet(() {}),
-                                );
-                              },
-                              child: const Text(
-                                '\uBD99\uC5EC\uB123\uAE30',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                      SegmentedButton<SongStorageTab>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(
+                            value: SongStorageTab.songs,
+                            label: Text('노래저장소'),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                _showAddSongDialog(
-                                  onSongAdded: () => refreshSheet(() {}),
-                                );
-                              },
-                              child: const Text(
-                                '\uACE1 \uCD94\uAC00',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                _showSongBackupMenu(
-                                  onSongsImported: () => refreshSheet(() {}),
-                                );
-                              },
-                              child: const Text(
-                                '\uBC31\uC5C5',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                          ButtonSegment(
+                            value: SongStorageTab.sets,
+                            label: Text('세트저장소'),
                           ),
                         ],
+                        selected: {storageTab},
+                        onSelectionChanged: (selection) {
+                          refreshSheet(() {
+                            storageTab = selection.first;
+                          });
+                        },
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: SegmentedButton<ArtistSortMode>(
-                                showSelectedIcon: false,
-                                segments: const [
-                                  ButtonSegment(
-                                    value: ArtistSortMode.added,
-                                    label: Text('추가순'),
-                                  ),
-                                  ButtonSegment(
-                                    value: ArtistSortMode.name,
-                                    label: Text('가수명순'),
-                                  ),
-                                  ButtonSegment(
-                                    value: ArtistSortMode.songCount,
-                                    label: Text('곡수순'),
-                                  ),
-                                ],
-                                selected: {_artistSortMode},
-                                onSelectionChanged: (selection) {
-                                  refreshSheet(() {
-                                    _artistSortMode = selection.first;
-                                  });
+                      if (storageTab == SongStorageTab.songs) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  _showPasteSongsDialog(
+                                    onSongsAdded: () => refreshSheet(() {}),
+                                  );
                                 },
+                                child: const Text(
+                                  '\uBD99\uC5EC\uB123\uAE30',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            onPressed: () => _showAllSongsDialog(
-                              onSongsChanged: () => refreshSheet(() {}),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  _showAddSongDialog(
+                                    onSongAdded: () => refreshSheet(() {}),
+                                  );
+                                },
+                                child: const Text(
+                                  '\uACE1 \uCD94\uAC00',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ),
-                            child: const Text('전체보기', maxLines: 1),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      ...artistEntries.map(
-                        (entry) => ArtistSongGroupTile(
-                          artist: entry.key,
-                          songs: entry.value,
-                          isRandomEnabled: _isArtistRandomEnabled(entry.key),
-                          onRandomToggle: (enabled) {
-                            _showToggleArtistRandomDialog(
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  _showSongBackupMenu(
+                                    onSongsImported: () => refreshSheet(() {}),
+                                  );
+                                },
+                                child: const Text(
+                                  '\uBC31\uC5C5',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: SegmentedButton<ArtistSortMode>(
+                                  showSelectedIcon: false,
+                                  segments: const [
+                                    ButtonSegment(
+                                      value: ArtistSortMode.added,
+                                      label: Text('추가순'),
+                                    ),
+                                    ButtonSegment(
+                                      value: ArtistSortMode.name,
+                                      label: Text('가수명순'),
+                                    ),
+                                    ButtonSegment(
+                                      value: ArtistSortMode.songCount,
+                                      label: Text('곡수순'),
+                                    ),
+                                  ],
+                                  selected: {_artistSortMode},
+                                  onSelectionChanged: (selection) {
+                                    refreshSheet(() {
+                                      _artistSortMode = selection.first;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton(
+                              onPressed: () => _showAllSongsDialog(
+                                onSongsChanged: () => refreshSheet(() {}),
+                              ),
+                              child: const Text('전체보기', maxLines: 1),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        ...artistEntries.map(
+                          (entry) => ArtistSongGroupTile(
+                            artist: entry.key,
+                            songs: entry.value,
+                            isRandomEnabled: _isArtistRandomEnabled(entry.key),
+                            onRandomToggle: (enabled) {
+                              _showToggleArtistRandomDialog(
+                                entry.key,
+                                enable: enabled,
+                                onChanged: () => refreshSheet(() {}),
+                              );
+                            },
+                            onTap: () => _showArtistSongsDialog(
                               entry.key,
-                              enable: enabled,
-                              onChanged: () => refreshSheet(() {}),
-                            );
-                          },
-                          onTap: () => _showArtistSongsDialog(
-                            entry.key,
-                            onSongChanged: () => refreshSheet(() {}),
+                              onSongChanged: () => refreshSheet(() {}),
+                            ),
                           ),
                         ),
-                      ),
+                      ] else
+                        _buildSongSetStorageTab(
+                          onChanged: () => refreshSheet(() {}),
+                        ),
                     ],
                   ),
                 ),
@@ -1524,6 +1705,32 @@ class _TodaySongPageState extends State<TodaySongPage> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildSongSetStorageTab({VoidCallback? onChanged}) {
+    if (_songSets.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Text(
+          '아직 만든 세트가 없어요.\n전체보기에서 곡을 선택해 세트를 만들어보세요.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: tdmTextSub, fontWeight: FontWeight.w600),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: _songSets
+          .map(
+            (songSet) => SongSetTile(
+              songSet: songSet,
+              onTap: () =>
+                  _showSongSetDetailDialog(songSet.id, onChanged: onChanged),
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -2739,6 +2946,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
           builder: (context, refreshDialog) {
             final songs = _allSongsForOverview();
             final selectedCount = selectedSongs.length;
+            final setLimitReached = _songSets.length >= 10;
 
             return AlertDialog(
               title: const Text('전체 곡 보기'),
@@ -2753,6 +2961,19 @@ class _TodaySongPageState extends State<TodaySongPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text('총 ${songs.length}곡 · 선택 $selectedCount곡'),
+                      if (setLimitReached) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '세트는 최대 10개까지 저장할 수 있어요.',
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Row(
                         children: [
@@ -2837,10 +3058,25 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           child: OutlinedButton(
                             onPressed: selectedSongs.isEmpty
                                 ? null
-                                : () => _shareSelectedSongs(
+                                : () => _showSelectedSongsPreviewDialog(
                                     selectedSongs.toList(),
                                   ),
-                            child: const Text('내보내기', maxLines: 1),
+                            child: const Text('선택곡 확인', maxLines: 1),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: selectedSongs.isEmpty || setLimitReached
+                                ? null
+                                : () => _showSaveSongSetDialog(
+                                    selectedSongs.toList(),
+                                    onSaved: () {
+                                      refreshDialog(selectedSongs.clear);
+                                      onSongsChanged?.call();
+                                    },
+                                  ),
+                            child: const Text('세트 저장', maxLines: 1),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -2892,20 +3128,653 @@ class _TodaySongPageState extends State<TodaySongPage> {
     return songs;
   }
 
-  Future<void> _shareSelectedSongs(List<Song> songs) async {
-    if (songs.isEmpty) {
-      _showRootSnackBar('내보낼 곡을 선택해 주세요.');
-      return;
-    }
-
-    final lines = <String>['🎧 선택한 곡 목록', ''];
+  String _buildSelectedSongsText(
+    List<Song> songs, {
+    String title = '선택한 곡 목록',
+  }) {
+    final lines = <String>['🎧 $title', ''];
     for (var index = 0; index < songs.length; index++) {
       final song = songs[index];
       lines.add('${index + 1}. ${song.artist} - ${song.title}');
     }
     lines.addAll(['', '#오늘의한곡 #TDM']);
 
-    await SharePlus.instance.share(ShareParams(text: lines.join('\n')));
+    return lines.join('\n');
+  }
+
+  void _showSelectedSongsPreviewDialog(List<Song> songs) {
+    if (songs.isEmpty) {
+      _showRootSnackBar('확인할 곡을 선택해 주세요.');
+      return;
+    }
+
+    final text = _buildSelectedSongsText(songs);
+
+    showDialog<void>(
+      context: context,
+      builder: (previewContext) {
+        return AlertDialog(
+          title: const Text('선택한 곡 목록'),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(previewContext).height * 0.5,
+            ),
+            child: SingleChildScrollView(child: SelectableText(text)),
+          ),
+          actions: [
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: text));
+                    if (previewContext.mounted) {
+                      Navigator.of(previewContext).pop();
+                    }
+                    _showRootSnackBar('선택한 곡 목록을 복사했어요.');
+                  },
+                  child: const Text('클립보드에 복사'),
+                ),
+                OutlinedButton(
+                  onPressed: () async {
+                    await SharePlus.instance.share(ShareParams(text: text));
+                  },
+                  child: const Text('공유하기'),
+                ),
+                OutlinedButton(
+                  onPressed: () => Navigator.of(previewContext).pop(),
+                  child: const Text('닫기'),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showSaveSongSetDialog(List<Song> songs, {VoidCallback? onSaved}) {
+    if (songs.isEmpty) {
+      _showRootSnackBar('세트로 저장할 곡을 선택해 주세요.');
+      return;
+    }
+
+    if (_songSets.length >= 10) {
+      _showRootSnackBar('세트는 최대 10개까지 만들 수 있어요. 기존 세트를 삭제하거나 수정해 주세요.');
+      return;
+    }
+
+    final nameController = TextEditingController();
+    var errorText = '';
+
+    showDialog<void>(
+      context: context,
+      builder: (setContext) {
+        return StatefulBuilder(
+          builder: (context, refreshDialog) {
+            return AlertDialog(
+              title: const Text('세트 저장'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('선택한 ${songs.length}곡으로 새 세트를 만들어요.'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: '세트 이름',
+                      errorText: errorText.isEmpty ? null : errorText,
+                    ),
+                    onChanged: (_) {
+                      if (errorText.isNotEmpty) {
+                        refreshDialog(() {
+                          errorText = '';
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(setContext).pop(),
+                  child: const Text('취소'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final name = nameController.text.trim();
+                    if (name.isEmpty) {
+                      refreshDialog(() {
+                        errorText = '세트 이름을 입력해 주세요.';
+                      });
+                      return;
+                    }
+                    if (_hasSongSetNamed(name)) {
+                      refreshDialog(() {
+                        errorText = '같은 이름의 세트가 이미 있어요. 다른 이름을 입력해 주세요.';
+                      });
+                      return;
+                    }
+
+                    setState(() {
+                      _songSets.add(
+                        SongSet(
+                          id: DateTime.now().microsecondsSinceEpoch.toString(),
+                          name: name,
+                          songs: List<Song>.of(songs),
+                        ),
+                      );
+                    });
+                    _saveSongSets();
+                    Navigator.of(setContext).pop();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) {
+                        return;
+                      }
+                      onSaved?.call();
+                      _showRootSnackBar('‘$name’ 세트를 저장했어요.');
+                    });
+                  },
+                  child: const Text('저장'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).whenComplete(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        nameController.dispose();
+      });
+    });
+  }
+
+  SongSet? _songSetById(String setId) {
+    for (final songSet in _songSets) {
+      if (songSet.id == setId) {
+        return songSet;
+      }
+    }
+    return null;
+  }
+
+  String _buildSongSetText(SongSet songSet) {
+    return _buildSelectedSongsText(songSet.songs, title: songSet.name);
+  }
+
+  void _showSongSetDetailDialog(String setId, {VoidCallback? onChanged}) {
+    showDialog<void>(
+      context: context,
+      builder: (detailContext) {
+        return StatefulBuilder(
+          builder: (context, refreshDialog) {
+            final songSet = _songSetById(setId);
+            if (songSet == null) {
+              return const AlertDialog(content: Text('세트를 찾을 수 없어요.'));
+            }
+
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      songSet.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () => _showSongSetManagementMenu(
+                      songSet,
+                      onRenamed: () {
+                        _runAfterFrame(() {
+                          refreshDialog(() {});
+                          onChanged?.call();
+                        });
+                      },
+                      onSongsAdded: () {
+                        _runAfterFrame(() {
+                          refreshDialog(() {});
+                          onChanged?.call();
+                        });
+                      },
+                      onDeleted: () {
+                        _runAfterFrame(() {
+                          Navigator.of(detailContext).pop();
+                          onChanged?.call();
+                        });
+                      },
+                    ),
+                    child: const Text('관리', maxLines: 1),
+                  ),
+                ],
+              ),
+              content: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(detailContext).height * 0.55,
+                ),
+                child: SizedBox(
+                  width: double.maxFinite,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text('${songSet.songs.length}곡'),
+                      const SizedBox(height: 8),
+                      if (songSet.songs.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 28),
+                          child: Text(
+                            '이 세트에 담긴 곡이 없어요.',
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      else
+                        Flexible(
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: songSet.songs.length,
+                            separatorBuilder: (context, index) =>
+                                const Divider(height: 8),
+                            itemBuilder: (context, index) {
+                              final song = songSet.songs[index];
+                              return Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '${index + 1}. ${song.artist} - ${song.title}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    visualDensity: VisualDensity.compact,
+                                    tooltip: '세트에서 제외',
+                                    onPressed: () =>
+                                        _showRemoveSingleSongFromSetDialog(
+                                          songSet,
+                                          song,
+                                          onRemoved: () {
+                                            _runAfterFrame(() {
+                                              refreshDialog(() {});
+                                              onChanged?.call();
+                                            });
+                                          },
+                                        ),
+                                    icon: const Icon(Icons.close, size: 18),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: songSet.songs.isEmpty
+                                ? null
+                                : () async {
+                                    await Clipboard.setData(
+                                      ClipboardData(
+                                        text: _buildSongSetText(songSet),
+                                      ),
+                                    );
+                                    _showRootSnackBar('리스트를 클립보드에 복사했어요.');
+                                  },
+                            child: const Text('리스트 복사', maxLines: 1),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(detailContext).pop(),
+                            child: const Text('닫기', maxLines: 1),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showSongSetManagementMenu(
+    SongSet songSet, {
+    VoidCallback? onRenamed,
+    VoidCallback? onSongsAdded,
+    VoidCallback? onDeleted,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (menuContext) {
+        return AlertDialog(
+          title: const Text('세트 관리'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              OutlinedButton(
+                onPressed: () {
+                  Navigator.of(menuContext).pop();
+                  _runAfterFrame(() {
+                    _showRenameSongSetDialog(songSet, onRenamed: onRenamed);
+                  });
+                },
+                child: const Text('세트명 수정'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () {
+                  Navigator.of(menuContext).pop();
+                  _runAfterFrame(() {
+                    _showAddSongsToSetDialog(
+                      songSet,
+                      onSongsAdded: onSongsAdded,
+                    );
+                  });
+                },
+                child: const Text('곡 추가'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () {
+                  Navigator.of(menuContext).pop();
+                  _runAfterFrame(() {
+                    _showDeleteSongSetDialog(songSet, onDeleted: onDeleted);
+                  });
+                },
+                child: const Text('세트 삭제'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => Navigator.of(menuContext).pop(),
+                child: const Text('닫기'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAddSongsToSetDialog(SongSet songSet, {VoidCallback? onSongsAdded}) {
+    final selectedSongs = <Song>{};
+
+    showDialog<void>(
+      context: context,
+      builder: (addContext) {
+        return StatefulBuilder(
+          builder: (context, refreshDialog) {
+            final currentSet = _songSetById(songSet.id) ?? songSet;
+            final currentKeys = currentSet.songs.map(_songDuplicateKey).toSet();
+            final songs = _allSongsForOverview();
+
+            return AlertDialog(
+              title: const Text('곡 추가'),
+              content: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(addContext).height * 0.6,
+                ),
+                child: SizedBox(
+                  width: double.maxFinite,
+                  child: songs.isEmpty
+                      ? const Text('아직 저장된 곡이 없어요.')
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: songs.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 8),
+                          itemBuilder: (context, index) {
+                            final song = songs[index];
+                            final alreadyInSet = currentKeys.contains(
+                              _songDuplicateKey(song),
+                            );
+                            final checked = selectedSongs.contains(song);
+
+                            return CheckboxListTile(
+                              dense: true,
+                              value: alreadyInSet ? false : checked,
+                              controlAffinity: ListTileControlAffinity.leading,
+                              contentPadding: EdgeInsets.zero,
+                              onChanged: alreadyInSet
+                                  ? null
+                                  : (value) {
+                                      refreshDialog(() {
+                                        if (value ?? false) {
+                                          selectedSongs.add(song);
+                                        } else {
+                                          selectedSongs.remove(song);
+                                        }
+                                      });
+                                    },
+                              title: Text(
+                                '${song.artist} - ${song.title}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: alreadyInSet
+                                  ? const Text('이미 있음')
+                                  : null,
+                            );
+                          },
+                        ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(addContext).pop(),
+                  child: const Text('취소'),
+                ),
+                FilledButton(
+                  onPressed: selectedSongs.isEmpty
+                      ? null
+                      : () {
+                          setState(() {
+                            _songSets = _songSets
+                                .map(
+                                  (set) => set.id == currentSet.id
+                                      ? set.copyWith(
+                                          songs: [
+                                            ...set.songs,
+                                            ...selectedSongs,
+                                          ],
+                                        )
+                                      : set,
+                                )
+                                .toList();
+                          });
+                          _saveSongSets();
+                          Navigator.of(addContext).pop();
+                          _runAfterFrame(() {
+                            onSongsAdded?.call();
+                            _showRootSnackBar('선택한 곡을 세트에 추가했어요.');
+                          });
+                        },
+                  child: const Text('추가'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showRemoveSingleSongFromSetDialog(
+    SongSet songSet,
+    Song song, {
+    VoidCallback? onRemoved,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (confirmContext) {
+        return AlertDialog(
+          title: const Text('곡 제외'),
+          content: const Text('이 곡을 세트에서 제외할까요?\n원본 노래 저장소에서는 삭제되지 않아요.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(confirmContext).pop(),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final removeKey = _songDuplicateKey(song);
+                setState(() {
+                  _songSets = _songSets
+                      .map(
+                        (set) => set.id == songSet.id
+                            ? set.copyWith(
+                                songs: set.songs
+                                    .where(
+                                      (setSong) =>
+                                          _songDuplicateKey(setSong) !=
+                                          removeKey,
+                                    )
+                                    .toList(),
+                              )
+                            : set,
+                      )
+                      .toList();
+                });
+                _saveSongSets();
+                Navigator.of(confirmContext).pop();
+                _runAfterFrame(() {
+                  onRemoved?.call();
+                  _showRootSnackBar('곡을 세트에서 제외했어요.');
+                });
+              },
+              child: const Text('제외'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showRenameSongSetDialog(SongSet songSet, {VoidCallback? onRenamed}) {
+    final nameController = TextEditingController(text: songSet.name);
+    var errorText = '';
+
+    showDialog<void>(
+      context: context,
+      builder: (renameContext) {
+        return StatefulBuilder(
+          builder: (context, refreshDialog) {
+            return AlertDialog(
+              title: const Text('이름 수정'),
+              content: TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: '세트 이름',
+                  errorText: errorText.isEmpty ? null : errorText,
+                ),
+                onChanged: (_) {
+                  if (errorText.isNotEmpty) {
+                    refreshDialog(() {
+                      errorText = '';
+                    });
+                  }
+                },
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(renameContext).pop(),
+                  child: const Text('취소'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final name = nameController.text.trim();
+                    if (name.isEmpty) {
+                      refreshDialog(() {
+                        errorText = '세트 이름을 입력해 주세요.';
+                      });
+                      return;
+                    }
+                    if (_hasSongSetNamed(name, exceptId: songSet.id)) {
+                      refreshDialog(() {
+                        errorText = '같은 이름의 세트가 이미 있어요. 다른 이름을 입력해 주세요.';
+                      });
+                      return;
+                    }
+
+                    setState(() {
+                      _songSets = _songSets
+                          .map(
+                            (set) => set.id == songSet.id
+                                ? set.copyWith(name: name)
+                                : set,
+                          )
+                          .toList();
+                    });
+                    _saveSongSets();
+                    Navigator.of(renameContext).pop();
+                    _runAfterFrame(() {
+                      onRenamed?.call();
+                      _showRootSnackBar('세트 이름을 수정했어요.');
+                    });
+                  },
+                  child: const Text('저장'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).whenComplete(() {
+      _runAfterFrame(nameController.dispose);
+    });
+  }
+
+  void _showDeleteSongSetDialog(SongSet songSet, {VoidCallback? onDeleted}) {
+    showDialog<void>(
+      context: context,
+      builder: (deleteContext) {
+        return AlertDialog(
+          title: const Text('세트를 삭제할까요?'),
+          content: Text('‘${songSet.name}’ 세트를 삭제합니다.\n곡 저장소의 원본 곡은 삭제되지 않아요.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(deleteContext).pop(),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () {
+                setState(() {
+                  _songSets.removeWhere((set) => set.id == songSet.id);
+                });
+                _saveSongSets();
+                Navigator.of(deleteContext).pop();
+                _runAfterFrame(() {
+                  onDeleted?.call();
+                  _showRootSnackBar('세트를 삭제했어요.');
+                });
+              },
+              child: const Text('삭제'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showDeleteSelectedSongsDialog(
@@ -2955,6 +3824,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     setState(() {
       _songs.removeWhere(songsToDelete.contains);
       _syncArtistFilterState();
+      _syncSongSetsWithSongs();
 
       final selectedSong = _selectedSong;
       if (selectedSong != null && songsToDelete.contains(selectedSong)) {
@@ -2977,6 +3847,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     });
     _saveSongs();
     _saveDisabledRandomArtists();
+    _saveSongSets();
     _showRootSnackBar('선택한 ${songsToDelete.length}곡을 삭제했어요.');
   }
 
@@ -3209,6 +4080,67 @@ class _TodaySongPageState extends State<TodaySongPage> {
                   ),
                 ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SongSetTile extends StatelessWidget {
+  final SongSet songSet;
+  final VoidCallback onTap;
+
+  const SongSetTile({super.key, required this.songSet, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: const BorderSide(color: tdmBorder),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        songSet.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colorScheme.onSurface,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${songSet.songs.length}곡',
+                        style: TextStyle(
+                          color: colorScheme.onSurfaceVariant,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
+              ],
             ),
           ),
         ),
