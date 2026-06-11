@@ -5,7 +5,7 @@
       "slot": 1,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
-      "endAt": "2026-06-11T23:59:59+09:00",
+      "endAt": "2026-06-17T23:59:59+09:00",
       "title": "선착순 영업곡 샘플 001",
       "message": "좋아하는 곡을 짧은 멘트와 함께 소개해요.",
       "imageUrl": "ads/ad_tdm_main_self_001.png",
@@ -13,7 +13,7 @@
       "song": {
         "artist": "N.Flying",
         "title": "환절기",
-        "memo": "영업 전광판 샘플 추천곡 001",
+        "memo": "엔플라잉 디지털 싱글 6월 2일 발매",
         "tags": "오늘의한곡,TDM,영업곡,추천곡",
         "link": "https://youtu.be/99arhk9wdNE"
       }
@@ -23,17 +23,17 @@
       "slot": 2,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
-      "endAt": "2026-06-11T23:59:59+09:00",
+      "endAt": "2026-06-17T23:59:59+09:00",
       "title": "선착순 영업곡 샘플 002",
       "message": "전광판에 띄우고 싶은 추천곡과 영업 멘트를 테스트합니다.",
       "imageUrl": "ads/ad_tdm_main_self_002.png",
       "linkUrl": "https://x.com/todaydrawmusic",
       "song": {
         "artist": "ONEWE",
-        "title": "비를 몰고 오는 소년",
+        "title": "ICARUS",
         "memo": "영업 전광판 샘플 추천곡 002",
         "tags": "오늘의한곡,TDM,영업곡,추천곡",
-        "link": "https://www.youtube.com/results?search_query=ONEWE+%EB%B9%84%EB%A5%BC+%EB%AA%B0%EA%B3%A0+%EC%98%A4%EB%8A%94+%EC%86%8C%EB%85%84"
+        "link": "https://youtu.be/BTEzUKfhWl8?si=xHP03ewVhUbMuhQZ"
       }
     },
     {
@@ -65,7 +65,7 @@
       "slot": 1,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
-      "endAt": "2026-06-11T23:59:59+09:00",
+      "endAt": "2026-06-17T23:59:59+09:00",
       "title": "영업 전광판 샘플 001",
       "message": "하단 전광판 샘플입니다.",
       "imageUrl": "ads/ad_tdm_bottom_self_001.png",
@@ -76,7 +76,7 @@
       "slot": 2,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
-      "endAt": "2026-06-11T23:59:59+09:00",
+      "endAt": "2026-06-17T23:59:59+09:00",
       "title": "영업 전광판 샘플 002",
       "message": "하단 전광판 순환 테스트입니다.",
       "imageUrl": "ads/ad_tdm_bottom_self_002.png",

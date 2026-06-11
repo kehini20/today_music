@@ -33,6 +33,8 @@ const Color tdmLinkBlue = Color(0xFF3A8FC3);
 class SongStorage {
   static const String _songsKey = 'tdm_alpha_songs';
   static const String _songSetsKey = 'tdm_song_sets';
+  static const String _randomModeKey = 'tdm_random_mode';
+  static const String _selectedSongSetIdsKey = 'tdm_selected_song_set_ids';
   static const String _samplePromptCheckedKey = 'sample_prompt_checked';
   static const String _defaultShareMessageKey = 'tdm_default_share_message';
   static const String _disabledRandomArtistsKey = 'tdm_disabled_random_artists';
@@ -112,6 +114,44 @@ class SongStorage {
       await preferences.setString(_songSetsKey, encodedSets);
     } catch (_) {
       // Set persistence should never crash the app.
+    }
+  }
+
+  static Future<RandomMode> loadRandomMode() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return preferences.getString(_randomModeKey) == RandomMode.songSets.name
+          ? RandomMode.songSets
+          : RandomMode.artistRandom;
+    } catch (_) {
+      return RandomMode.artistRandom;
+    }
+  }
+
+  static Future<void> saveRandomMode(RandomMode mode) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(_randomModeKey, mode.name);
+    } catch (_) {
+      // Random mode persistence should never crash the app.
+    }
+  }
+
+  static Future<List<String>> loadSelectedSongSetIds() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return preferences.getStringList(_selectedSongSetIdsKey) ?? const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> saveSelectedSongSetIds(List<String> setIds) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList(_selectedSongSetIdsKey, setIds);
+    } catch (_) {
+      // Random set selection persistence should never crash the app.
     }
   }
 
@@ -220,6 +260,13 @@ class SongSet {
   }
 }
 
+class SongSetRandomCandidate {
+  final Song song;
+  final String setName;
+
+  const SongSetRandomCandidate({required this.song, required this.setName});
+}
+
 enum PasteSongCandidateStatus { newSong, existing, needsReview }
 
 enum ArtistSortMode { added, name, songCount }
@@ -227,6 +274,8 @@ enum ArtistSortMode { added, name, songCount }
 enum SongListSortMode { added, title }
 
 enum SongStorageTab { songs, sets }
+
+enum RandomMode { artistRandom, songSets }
 
 class PasteSongCandidate {
   final String sourceLine;
@@ -357,6 +406,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   Song? _selectedSong;
   Song? _lastResultSong;
   bool _isSponsorPick = false;
+  String? _resultSongSetName;
   SponsorAd _bottomAd = fallbackBottomAd;
   MainSponsorAd _mainAd = fallbackMainAd;
   String _defaultShareMessage = '';
@@ -365,6 +415,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
   ArtistSortMode _artistSortMode = ArtistSortMode.added;
   Set<String> _disabledRandomArtists = {};
   List<SongSet> _songSets = [];
+  RandomMode _randomMode = RandomMode.artistRandom;
+  List<String> _selectedSongSetIds = [];
 
   @override
   void initState() {
@@ -382,6 +434,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
   Future<void> _loadSavedSongs() async {
     final savedSongs = await SongStorage.loadSongs();
     final savedSongSets = await SongStorage.loadSongSets();
+    final savedRandomMode = await SongStorage.loadRandomMode();
+    final selectedSongSetIds = await SongStorage.loadSelectedSongSetIds();
     final disabledRandomArtists = await SongStorage.loadDisabledRandomArtists();
     final samplePromptChecked = await SongStorage.isSamplePromptChecked();
     final defaultShareMessage = await SongStorage.loadDefaultShareMessage();
@@ -395,12 +449,21 @@ class _TodaySongPageState extends State<TodaySongPage> {
       final existingArtists = songsByArtist(loadedSongs).keys.toSet();
       _songs = loadedSongs;
       _songSets = _songSetsSyncedWithSongs(savedSongSets, loadedSongs);
+      _selectedSongSetIds = selectedSongSetIds
+          .where((setId) => _songSets.any((set) => set.id == setId))
+          .toList();
+      _randomMode =
+          savedRandomMode == RandomMode.songSets &&
+              _selectedSongSetIds.isNotEmpty
+          ? RandomMode.songSets
+          : RandomMode.artistRandom;
       _disabledRandomArtists = disabledRandomArtists
           .where(existingArtists.contains)
           .toSet();
       _selectedSong = null;
       _lastResultSong = null;
       _isSponsorPick = false;
+      _resultSongSetName = null;
       _defaultShareMessage = defaultShareMessage;
       _includeTodayTag = true;
       _shareTextController.clear();
@@ -425,6 +488,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   void _saveDisabledRandomArtists() {
     SongStorage.saveDisabledRandomArtists(_disabledRandomArtists);
+  }
+
+  void _saveRandomSelection() {
+    SongStorage.saveRandomMode(_randomMode);
+    SongStorage.saveSelectedSongSetIds(_selectedSongSetIds);
   }
 
   void _syncArtistFilterState() {
@@ -452,6 +520,28 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   void _syncSongSetsWithSongs() {
     _songSets = _songSetsSyncedWithSongs(_songSets, _songs);
+    _syncSelectedSongSets();
+  }
+
+  void _syncSelectedSongSets({bool showFallbackMessage = false}) {
+    final existingSetIds = _songSets.map((set) => set.id).toSet();
+    final beforeIds = List<String>.of(_selectedSongSetIds);
+    _selectedSongSetIds = _selectedSongSetIds
+        .where(existingSetIds.contains)
+        .toList();
+
+    final removedSelectedSet = beforeIds.length != _selectedSongSetIds.length;
+    if (_selectedSongSetIds.isEmpty) {
+      final wasSetRandom = _randomMode == RandomMode.songSets;
+      _randomMode = RandomMode.artistRandom;
+      if (showFallbackMessage && wasSetRandom && removedSelectedSet) {
+        _showRootSnackBar('선택한 세트가 삭제되어 가수 랜덤으로 변경했어요.');
+      }
+    }
+  }
+
+  List<SongSet> _selectedSongSets() {
+    return _selectedSongSetIds.map(_songSetById).whereType<SongSet>().toList();
   }
 
   void _replaceSongInSets(Song originalSong, Song updatedSong) {
@@ -616,6 +706,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
       return;
     }
 
+    if (_randomMode == RandomMode.songSets) {
+      _pickRandomSongFromSets();
+      return;
+    }
+
     final candidateSongs = _randomCandidateSongs();
     if (candidateSongs.isEmpty) {
       _showRootSnackBar('뽑기 후보가 없어요. 노래 저장소에서 랜덤 후보로 사용할 가수를 활성화해 주세요.');
@@ -641,8 +736,55 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _selectedSong = nextSong;
       _lastResultSong = nextSong;
       _isSponsorPick = false;
+      _resultSongSetName = null;
       _includeSongLink = true;
       _resetShareText(nextSong);
+    });
+  }
+
+  void _pickRandomSongFromSets() {
+    final selectedSets = _selectedSongSets();
+    if (selectedSets.isEmpty) {
+      setState(() {
+        _randomMode = RandomMode.artistRandom;
+        _selectedSongSetIds = [];
+      });
+      _saveRandomSelection();
+      _showRootSnackBar('가수 랜덤으로 변경했어요.');
+      return;
+    }
+
+    final candidateSongs = _randomSetCandidateSongs(selectedSets);
+    if (candidateSongs.isEmpty) {
+      _showRootSnackBar('선택한 세트에 곡이 없어요.');
+      return;
+    }
+
+    final previousResult = _isSponsorPick
+        ? (_selectedSong ?? _lastResultSong)
+        : _selectedSong ?? _lastResultSong;
+    var randomCandidates = candidateSongs;
+    if (previousResult != null && candidateSongs.length > 1) {
+      final filteredSongs = candidateSongs
+          .where(
+            (candidate) => !_isSameSongResult(candidate.song, previousResult),
+          )
+          .toList();
+      if (filteredSongs.isNotEmpty) {
+        randomCandidates = filteredSongs;
+      }
+    }
+
+    final nextCandidate =
+        randomCandidates[_random.nextInt(randomCandidates.length)];
+
+    setState(() {
+      _selectedSong = nextCandidate.song;
+      _lastResultSong = nextCandidate.song;
+      _isSponsorPick = false;
+      _resultSongSetName = nextCandidate.setName;
+      _includeSongLink = true;
+      _resetShareText(nextCandidate.song);
     });
   }
 
@@ -657,6 +799,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _selectedSong = sponsorSong;
       _lastResultSong = sponsorSong;
       _isSponsorPick = true;
+      _resultSongSetName = null;
       _includeSongLink = true;
       _resetShareText(sponsorSong);
     });
@@ -668,7 +811,26 @@ class _TodaySongPageState extends State<TodaySongPage> {
         .toList();
   }
 
+  List<SongSetRandomCandidate> _randomSetCandidateSongs(List<SongSet> sets) {
+    return [
+      for (final songSet in sets)
+        for (final song in songSet.songs)
+          SongSetRandomCandidate(song: song, setName: songSet.name),
+    ];
+  }
+
   String _drawScopeLabel() {
+    if (_randomMode == RandomMode.songSets) {
+      final selectedSets = _selectedSongSets();
+      if (selectedSets.isEmpty) {
+        return '현재 뽑기 범위: 선택된 세트 없음';
+      }
+      if (selectedSets.length == 1) {
+        return '현재 뽑기 범위: ‘${selectedSets.first.name}’ 세트';
+      }
+      return '현재 뽑기 범위: 세트 ${selectedSets.length}개 선택 중';
+    }
+
     final groupedSongs = songsByArtist(_songs);
     if (groupedSongs.isEmpty) {
       return '현재 뽑기 범위: 저장된 곡 없음';
@@ -1310,8 +1472,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _selectedSong = null;
       _lastResultSong = null;
       _isSponsorPick = false;
+      _resultSongSetName = null;
       _disabledRandomArtists.clear();
       _songSets.clear();
+      _randomMode = RandomMode.artistRandom;
+      _selectedSongSetIds.clear();
       _shareTextController.clear();
       _includeTodayTag = true;
       _includeSongLink = true;
@@ -1320,6 +1485,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     _saveSongs();
     _saveDisabledRandomArtists();
     _saveSongSets();
+    _saveRandomSelection();
     _showRootSnackBar('저장된 곡 목록을 초기화했어요.');
   }
 
@@ -1405,6 +1571,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
         _selectedSong = null;
         _shareTextController.clear();
         _includeSongLink = true;
+        _resultSongSetName = null;
       }
       if (_lastResultSong != null &&
           _isSameSongResult(_lastResultSong!, song)) {
@@ -1412,6 +1579,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       }
       if (_selectedSong == null) {
         _isSponsorPick = false;
+        _resultSongSetName = null;
       }
     });
     _saveSongs();
@@ -1427,6 +1595,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     setState(() {
       _selectedSong = null;
       _isSponsorPick = false;
+      _resultSongSetName = null;
       _shareTextController.clear();
       _includeSongLink = true;
     });
@@ -1455,12 +1624,14 @@ class _TodaySongPageState extends State<TodaySongPage> {
         _selectedSong = null;
         _shareTextController.clear();
         _includeSongLink = true;
+        _resultSongSetName = null;
       }
       if (shouldClearLastResult) {
         _lastResultSong = null;
       }
       if (_selectedSong == null) {
         _isSponsorPick = false;
+        _resultSongSetName = null;
       }
     });
     _saveSongs();
@@ -1675,18 +1846,33 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           ],
                         ),
                         const SizedBox(height: 16),
+                        if (_randomMode == RandomMode.songSets) ...[
+                          const Text(
+                            '세트 랜덤 사용 중에는 가수 랜덤 설정이 잠시 적용되지 않아요.\n'
+                            '세트 선택을 모두 해제하면 다시 가수 랜덤을 사용할 수 있어요.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: tdmTextSub,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         ...artistEntries.map(
                           (entry) => ArtistSongGroupTile(
                             artist: entry.key,
                             songs: entry.value,
                             isRandomEnabled: _isArtistRandomEnabled(entry.key),
-                            onRandomToggle: (enabled) {
-                              _showToggleArtistRandomDialog(
-                                entry.key,
-                                enable: enabled,
-                                onChanged: () => refreshSheet(() {}),
-                              );
-                            },
+                            onRandomToggle: _randomMode == RandomMode.songSets
+                                ? null
+                                : (enabled) {
+                                    _showToggleArtistRandomDialog(
+                                      entry.key,
+                                      enable: enabled,
+                                      onChanged: () => refreshSheet(() {}),
+                                    );
+                                  },
                             onTap: () => _showArtistSongsDialog(
                               entry.key,
                               onSongChanged: () => refreshSheet(() {}),
@@ -1722,16 +1908,97 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: _songSets
-          .map(
-            (songSet) => SongSetTile(
-              songSet: songSet,
-              onTap: () =>
-                  _showSongSetDetailDialog(songSet.id, onChanged: onChanged),
+      children: [
+        ..._songSets.map(
+          (songSet) => SongSetTile(
+            songSet: songSet,
+            isSelectedForRandom: _selectedSongSetIds.contains(songSet.id),
+            onRandomToggle: (selected) => _toggleSongSetRandomSelection(
+              songSet,
+              selected: selected,
+              onChanged: onChanged,
             ),
-          )
-          .toList(),
+            onTap: () =>
+                _showSongSetDetailDialog(songSet.id, onChanged: onChanged),
+          ),
+        ),
+      ],
     );
+  }
+
+  void _toggleSongSetRandomSelection(
+    SongSet songSet, {
+    required bool selected,
+    VoidCallback? onChanged,
+  }) {
+    if (selected) {
+      if (_selectedSongSetIds.contains(songSet.id)) {
+        return;
+      }
+      if (_randomMode != RandomMode.songSets || _selectedSongSetIds.isEmpty) {
+        showDialog<void>(
+          context: context,
+          builder: (confirmContext) {
+            return AlertDialog(
+              title: const Text('세트 랜덤 사용'),
+              content: const Text(
+                '세트 랜덤을 사용하면 가수별 랜덤 설정은 잠시 적용되지 않아요.\n'
+                '가수별 설정은 유지되며, 세트 선택을 모두 해제하면 다시 가수 랜덤으로 돌아가요.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(confirmContext).pop(),
+                  child: const Text('취소'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(confirmContext).pop();
+                    _runAfterFrame(() {
+                      _selectSongSetForRandom(songSet, onChanged: onChanged);
+                    });
+                  },
+                  child: const Text('세트 랜덤 사용'),
+                ),
+              ],
+            );
+          },
+        );
+      } else {
+        _selectSongSetForRandom(songSet, onChanged: onChanged);
+      }
+      return;
+    }
+
+    _unselectSongSetForRandom(songSet, onChanged: onChanged);
+  }
+
+  void _selectSongSetForRandom(SongSet songSet, {VoidCallback? onChanged}) {
+    setState(() {
+      _selectedSongSetIds = [..._selectedSongSetIds, songSet.id];
+      _randomMode = RandomMode.songSets;
+    });
+    _saveRandomSelection();
+    onChanged?.call();
+  }
+
+  void _unselectSongSetForRandom(SongSet songSet, {VoidCallback? onChanged}) {
+    if (!_selectedSongSetIds.contains(songSet.id)) {
+      return;
+    }
+
+    setState(() {
+      _selectedSongSetIds = _selectedSongSetIds
+          .where((setId) => setId != songSet.id)
+          .toList();
+      if (_selectedSongSetIds.isEmpty) {
+        _randomMode = RandomMode.artistRandom;
+      }
+    });
+    _saveRandomSelection();
+    onChanged?.call();
+    if (_randomMode == RandomMode.artistRandom) {
+      _showRootSnackBar('선택된 세트가 없어 가수 랜덤으로 변경했어요.');
+    }
   }
 
   void _showAddSongDialog({VoidCallback? onSongAdded}) {
@@ -3725,6 +3992,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 : set,
                           )
                           .toList();
+                      if (_resultSongSetName == songSet.name) {
+                        _resultSongSetName = name;
+                      }
                     });
                     _saveSongSets();
                     Navigator.of(renameContext).pop();
@@ -3759,14 +4029,22 @@ class _TodaySongPageState extends State<TodaySongPage> {
             ),
             FilledButton(
               onPressed: () {
+                final wasSelectedSet = _selectedSongSetIds.contains(songSet.id);
                 setState(() {
                   _songSets.removeWhere((set) => set.id == songSet.id);
+                  _syncSelectedSongSets(showFallbackMessage: true);
+                  if (_resultSongSetName == songSet.name) {
+                    _resultSongSetName = null;
+                  }
                 });
                 _saveSongSets();
+                _saveRandomSelection();
                 Navigator.of(deleteContext).pop();
                 _runAfterFrame(() {
                   onDeleted?.call();
-                  _showRootSnackBar('세트를 삭제했어요.');
+                  if (!wasSelectedSet || _randomMode == RandomMode.songSets) {
+                    _showRootSnackBar('세트를 삭제했어요.');
+                  }
                 });
               },
               child: const Text('삭제'),
@@ -3914,7 +4192,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           if (_selectedSong != null) ...[
-                            SongResultCard(song: _selectedSong),
+                            SongResultCard(
+                              song: _selectedSong,
+                              sourceSetName: _resultSongSetName,
+                            ),
                             const SizedBox(height: 16),
                             _PickSongButton(
                               label: '다른 곡 뽑기',
@@ -4090,9 +4371,17 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
 class SongSetTile extends StatelessWidget {
   final SongSet songSet;
+  final bool isSelectedForRandom;
+  final ValueChanged<bool> onRandomToggle;
   final VoidCallback onTap;
 
-  const SongSetTile({super.key, required this.songSet, required this.onTap});
+  const SongSetTile({
+    super.key,
+    required this.songSet,
+    required this.isSelectedForRandom,
+    required this.onRandomToggle,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -4101,7 +4390,7 @@ class SongSetTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: Colors.white,
+        color: isSelectedForRandom ? tdmCardBackground : Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: const BorderSide(color: tdmBorder),
@@ -4113,6 +4402,12 @@ class SongSetTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
+                Checkbox(
+                  value: isSelectedForRandom,
+                  onChanged: (value) => onRandomToggle(value ?? false),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -4129,7 +4424,9 @@ class SongSetTile extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${songSet.songs.length}곡',
+                        isSelectedForRandom
+                            ? '${songSet.songs.length}곡 · 랜덤 선택 중'
+                            : '${songSet.songs.length}곡',
                         style: TextStyle(
                           color: colorScheme.onSurfaceVariant,
                           fontSize: 13,
@@ -4153,7 +4450,7 @@ class ArtistSongGroupTile extends StatelessWidget {
   final String artist;
   final List<Song> songs;
   final bool isRandomEnabled;
-  final ValueChanged<bool> onRandomToggle;
+  final ValueChanged<bool>? onRandomToggle;
   final VoidCallback onTap;
 
   const ArtistSongGroupTile({
@@ -4186,7 +4483,9 @@ class ArtistSongGroupTile extends StatelessWidget {
           children: [
             Checkbox(
               value: isRandomEnabled,
-              onChanged: (value) => onRandomToggle(value ?? false),
+              onChanged: onRandomToggle == null
+                  ? null
+                  : (value) => onRandomToggle!(value ?? false),
               visualDensity: VisualDensity.compact,
             ),
             const SizedBox(width: 8),
@@ -4315,11 +4614,17 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ),
       ),
       actions: [
-        OutlinedButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('닫기'),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('닫기'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(onPressed: _save, child: const Text('저장')),
+          ],
         ),
-        FilledButton(onPressed: _save, child: const Text('저장')),
       ],
     );
   }
@@ -5071,8 +5376,9 @@ class _MainSponsorImagePlaceholder extends StatelessWidget {
 
 class SongResultCard extends StatelessWidget {
   final Song? song;
+  final String? sourceSetName;
 
-  const SongResultCard({super.key, required this.song});
+  const SongResultCard({super.key, required this.song, this.sourceSetName});
 
   @override
   Widget build(BuildContext context) {
@@ -5123,6 +5429,19 @@ class SongResultCard extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
+          if (sourceSetName != null && sourceSetName!.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              '‘${sourceSetName!.trim()}’ 세트',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colorScheme.onPrimaryContainer.withValues(alpha: 0.72),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
           if (song!.memo.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(
