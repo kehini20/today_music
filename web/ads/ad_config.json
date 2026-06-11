@@ -1,106 +1,106 @@
 {
   "mainAds": [
     {
-      "id": "main_sample_001_active",
+      "id": "main_sales_song_001_active",
       "slot": 1,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
-      "title": "TDM main sample 001",
-      "message": "Ad sponsor sample 001. This active candidate tests main ad rotation.",
+      "title": "선착순 영업곡 샘플 001",
+      "message": "좋아하는 곡을 짧은 멘트와 함께 소개해요.",
       "imageUrl": "ads/ad_tdm_main_self_001.png",
-      "linkUrl": "https://tangerine-nougat-072e10.netlify.app",
+      "linkUrl": "https://x.com/todaydrawmusic",
       "song": {
         "artist": "N.Flying",
-        "title": "\uD658\uC808\uAE30",
-        "memo": "\uD6C4\uC6D0\uC790 \uCD94\uCC9C\uACE1 \uC0D8\uD50C 001",
-        "tags": "\uC5D4\uD50C\uB77C\uC789,\uBC34\uB4DC,\uCD94\uCC9C",
+        "title": "환절기",
+        "memo": "영업 전광판 샘플 추천곡 001",
+        "tags": "오늘의한곡,TDM,영업곡,추천곡",
         "link": "https://youtu.be/99arhk9wdNE"
       }
     },
     {
-      "id": "main_sample_002_active",
+      "id": "main_sales_song_002_active",
       "slot": 2,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
-      "title": "TDM main sample 002",
-      "message": "Ad sponsor sample 002. This active candidate tests main ad rotation.",
+      "title": "선착순 영업곡 샘플 002",
+      "message": "전광판에 띄우고 싶은 추천곡과 영업 멘트를 테스트합니다.",
       "imageUrl": "ads/ad_tdm_main_self_002.png",
-      "linkUrl": "https://tangerine-nougat-072e10.netlify.app",
+      "linkUrl": "https://x.com/todaydrawmusic",
       "song": {
         "artist": "ONEWE",
-        "title": "\uBE44\uB97C \uBAB0\uACE0 \uC624\uB294 \uC18C\uB144",
-        "memo": "\uD6C4\uC6D0\uC790 \uCD94\uCC9C\uACE1 \uC0D8\uD50C 002",
-        "tags": "\uC6D0\uC704,\uBC34\uB4DC,\uCD94\uCC9C",
+        "title": "비를 몰고 오는 소년",
+        "memo": "영업 전광판 샘플 추천곡 002",
+        "tags": "오늘의한곡,TDM,영업곡,추천곡",
         "link": "https://www.youtube.com/results?search_query=ONEWE+%EB%B9%84%EB%A5%BC+%EB%AA%B0%EA%B3%A0+%EC%98%A4%EB%8A%94+%EC%86%8C%EB%85%84"
       }
     },
     {
-      "id": "main_sample_002_future",
+      "id": "main_sales_song_future",
       "slot": 3,
       "enabled": true,
       "startAt": "2026-12-01T00:00:00+09:00",
       "endAt": "2026-12-02T23:59:59+09:00",
-      "title": "Future main sample",
-      "message": "This future ad should not be active yet.",
+      "title": "미래 메인 전광판 샘플",
+      "message": "아직 노출되면 안 되는 미래 전광판 테스트입니다.",
       "imageUrl": "ads/ad_tdm_main_self_002.png",
       "linkUrl": ""
     },
     {
-      "id": "main_sample_002_disabled",
+      "id": "main_sales_song_disabled",
       "slot": 4,
       "enabled": false,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
-      "title": "Disabled main sample",
-      "message": "This disabled ad should not be active.",
+      "title": "비활성 메인 전광판 샘플",
+      "message": "비활성 상태라 노출되면 안 되는 전광판 테스트입니다.",
       "imageUrl": "ads/ad_tdm_main_self_002.png",
       "linkUrl": ""
     }
   ],
   "bottomAds": [
     {
-      "id": "bottom_sample_001_active",
+      "id": "bottom_sales_board_001_active",
       "slot": 1,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
-      "title": "TDM bottom sample 001",
-      "message": "Bottom banner sample 001.",
+      "title": "영업 전광판 샘플 001",
+      "message": "하단 전광판 샘플입니다.",
       "imageUrl": "ads/ad_tdm_bottom_self_001.png",
-      "linkUrl": "https://tangerine-nougat-072e10.netlify.app"
+      "linkUrl": "https://x.com/todaydrawmusic"
     },
     {
-      "id": "bottom_sample_002_active",
+      "id": "bottom_sales_board_002_active",
       "slot": 2,
       "enabled": true,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
-      "title": "TDM bottom sample 002",
-      "message": "Bottom banner sample 002.",
+      "title": "영업 전광판 샘플 002",
+      "message": "하단 전광판 순환 테스트입니다.",
       "imageUrl": "ads/ad_tdm_bottom_self_002.png",
-      "linkUrl": "https://tangerine-nougat-072e10.netlify.app"
+      "linkUrl": "https://x.com/todaydrawmusic"
     },
     {
-      "id": "bottom_sample_002_future",
+      "id": "bottom_sales_board_future",
       "slot": 3,
       "enabled": true,
       "startAt": "2026-12-01T00:00:00+09:00",
       "endAt": "2026-12-02T23:59:59+09:00",
-      "title": "Future bottom sample",
-      "message": "This future bottom banner should not be active yet.",
+      "title": "미래 하단 전광판 샘플",
+      "message": "아직 노출되면 안 되는 미래 하단 전광판 테스트입니다.",
       "imageUrl": "ads/ad_tdm_bottom_self_002.png",
       "linkUrl": ""
     },
     {
-      "id": "bottom_sample_002_disabled",
+      "id": "bottom_sales_board_disabled",
       "slot": 4,
       "enabled": false,
       "startAt": "2026-06-10T00:00:00+09:00",
       "endAt": "2026-06-11T23:59:59+09:00",
-      "title": "Disabled bottom sample",
-      "message": "This disabled bottom banner should not be active.",
+      "title": "비활성 하단 전광판 샘플",
+      "message": "비활성 상태라 노출되면 안 되는 하단 전광판 테스트입니다.",
       "imageUrl": "ads/ad_tdm_bottom_self_002.png",
       "linkUrl": ""
     }

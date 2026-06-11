@@ -965,6 +965,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
             SongStorage.saveDefaultShareMessage(trimmedMessage);
           },
           onContactEmail: _openContactEmail,
+          onOpenOfficialX: _openOfficialX,
           onResetSongs: _showResetSongsDialog,
         );
       },
@@ -974,6 +975,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   Future<void> _openContactEmail() async {
     final uri = Uri(
       scheme: 'mailto',
+      path: 'todaydrawmusic@gmail.com',
       queryParameters: {'subject': '오늘의 한 곡 문의'},
     );
 
@@ -988,6 +990,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
     } catch (_) {
       _showRootSnackBar('이메일 앱을 열 수 없습니다.');
     }
+  }
+
+  Future<void> _openOfficialX() async {
+    await _openSponsorLink('https://x.com/todaydrawmusic');
   }
 
   void _showResetSongsDialog() {
@@ -1253,13 +1259,32 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       Row(
                         children: [
                           Expanded(
-                            child: FilledButton(
+                            child: OutlinedButton(
                               onPressed: () {
-                                _showSongAddMenu(
+                                _showPasteSongsDialog(
+                                  onSongsAdded: () => refreshSheet(() {}),
+                                );
+                              },
+                              child: const Text(
+                                '\uBD99\uC5EC\uB123\uAE30',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                _showAddSongDialog(
                                   onSongAdded: () => refreshSheet(() {}),
                                 );
                               },
-                              child: const Text('곡 추가하기', maxLines: 1),
+                              child: const Text(
+                                '\uACE1 \uCD94\uAC00',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -1270,7 +1295,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                   onSongsImported: () => refreshSheet(() {}),
                                 );
                               },
-                              child: const Text('목록 백업', maxLines: 1),
+                              child: const Text(
+                                '\uBC31\uC5C5',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
                         ],
@@ -1337,48 +1366,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
             _addSong(song);
             onSongAdded?.call();
           },
-        );
-      },
-    );
-  }
-
-  void _showSongAddMenu({VoidCallback? onSongAdded}) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (menuContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '곡 추가하기',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: () {
-                    Navigator.of(menuContext).pop();
-                    _showAddSongDialog(onSongAdded: onSongAdded);
-                  },
-                  child: const Text('개별 곡 추가'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: () {
-                    Navigator.of(menuContext).pop();
-                    _showPasteSongsDialog(onSongsAdded: onSongAdded);
-                  },
-                  child: const Text('붙여넣기 추가'),
-                ),
-              ],
-            ),
-          ),
         );
       },
     );
@@ -2860,6 +2847,7 @@ class SettingsDialog extends StatefulWidget {
   final String initialDefaultMessage;
   final ValueChanged<String> onSave;
   final VoidCallback onContactEmail;
+  final VoidCallback onOpenOfficialX;
   final VoidCallback onResetSongs;
 
   const SettingsDialog({
@@ -2867,6 +2855,7 @@ class SettingsDialog extends StatefulWidget {
     required this.initialDefaultMessage,
     required this.onSave,
     required this.onContactEmail,
+    required this.onOpenOfficialX,
     required this.onResetSongs,
   });
 
@@ -2916,11 +2905,23 @@ class _SettingsDialogState extends State<SettingsDialog> {
               ),
             ),
             const Divider(height: 28),
+            Text('문의 및 소식', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 6),
+            Text(
+              '문의 todaydrawmusic@gmail.com',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
             OutlinedButton(
               onPressed: widget.onContactEmail,
               child: const Text('이메일로 문의하기'),
             ),
             const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: widget.onOpenOfficialX,
+              child: const Text('X @todaydrawmusic'),
+            ),
+            const Divider(height: 28),
             OutlinedButton(
               onPressed: widget.onResetSongs,
               child: const Text('전체 곡 초기화'),
@@ -3492,7 +3493,9 @@ class MainSponsorPanel extends StatelessWidget {
         children: [
           Semantics(
             button: hasLink,
-            label: hasMessage ? ad.message : '메인 홍보 이미지',
+            label: hasMessage
+                ? ad.message
+                : '\uBA54\uC778 \uC804\uAD11\uD310 \uC774\uBBF8\uC9C0',
             child: Material(
               color: colorScheme.surface,
               child: InkWell(
@@ -3510,7 +3513,7 @@ class MainSponsorPanel extends StatelessWidget {
           if (hasMessage || songLabel.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(
-              '후원자 픽',
+              '\uC120\uCC29\uC21C \uC601\uC5C5\uACE1',
               style: TextStyle(
                 color: colorScheme.onSurfaceVariant,
                 fontSize: 11,

@@ -135,8 +135,8 @@ class SponsorAdConfig {
 
 const SponsorAd fallbackBottomAd = SponsorAd(
   enabled: true,
-  title: '오늘의 한 곡',
-  message: '오늘도 한 곡 뽑아볼까요?',
+  title: '영업 전광판',
+  message: '좋아하는 곡을 짧은 멘트와 함께 소개해요.',
   imageUrl: '',
   linkUrl: '',
 );
@@ -145,7 +145,7 @@ const MainSponsorAd fallbackMainAd = MainSponsorAd(
   enabled: true,
   imageUrl: '',
   fallbackAsset: fallbackMainAdAssetPath,
-  message: '오늘의 추천곡을 준비 중이에요. 지금은 랜덤 뽑기로 먼저 만나보세요.',
+  message: '좋아하는 곡을 짧은 멘트와 함께 소개해요.',
   linkUrl: '',
   song: null,
 );
