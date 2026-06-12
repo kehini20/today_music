@@ -3385,54 +3385,27 @@ class _TodaySongPageState extends State<TodaySongPage> {
               actions: [
                 Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: selectedSongs.isEmpty
-                                ? null
-                                : () => _showSelectedSongsPreviewDialog(
-                                    selectedSongs.toList(),
-                                  ),
-                            child: const Text('선택곡 확인', maxLines: 1),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: selectedSongs.isEmpty || setLimitReached
-                                ? null
-                                : () => _showSaveSongSetDialog(
-                                    selectedSongs.toList(),
-                                    onSaved: () {
-                                      refreshDialog(selectedSongs.clear);
-                                      onSongsChanged?.call();
-                                    },
-                                  ),
-                            child: const Text('세트 저장', maxLines: 1),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: selectedSongs.isEmpty
-                                ? null
-                                : () => _showDeleteSelectedSongsDialog(
-                                    selectedSongs.toList(),
-                                    onDeleted: () {
-                                      refreshDialog(selectedSongs.clear);
-                                      onSongsChanged?.call();
-                                    },
-                                  ),
-                            child: const Text('삭제', maxLines: 1),
-                          ),
-                        ),
-                      ],
+                    OutlinedButton(
+                      onPressed: selectedSongs.isEmpty
+                          ? null
+                          : () => _showSelectedSongsPreviewDialog(
+                              selectedSongs.toList(),
+                              setLimitReached: setLimitReached,
+                              onSetSaved: () {
+                                refreshDialog(selectedSongs.clear);
+                                onSongsChanged?.call();
+                              },
+                              onDeleted: () {
+                                refreshDialog(selectedSongs.clear);
+                                onSongsChanged?.call();
+                              },
+                            ),
+                      child: const Text('선택곡 보기', maxLines: 1),
                     ),
                     const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.center,
+                    Center(
                       child: OutlinedButton(
                         onPressed: () => Navigator.of(dialogContext).pop(),
                         child: const Text('닫기', maxLines: 1),
@@ -3476,9 +3449,14 @@ class _TodaySongPageState extends State<TodaySongPage> {
     return lines.join('\n');
   }
 
-  void _showSelectedSongsPreviewDialog(List<Song> songs) {
+  void _showSelectedSongsPreviewDialog(
+    List<Song> songs, {
+    required bool setLimitReached,
+    VoidCallback? onSetSaved,
+    VoidCallback? onDeleted,
+  }) {
     if (songs.isEmpty) {
-      _showRootSnackBar('확인할 곡을 선택해 주세요.');
+      _showRootSnackBar('곡을 선택해 주세요.');
       return;
     }
 
@@ -3488,38 +3466,100 @@ class _TodaySongPageState extends State<TodaySongPage> {
       context: context,
       builder: (previewContext) {
         return AlertDialog(
-          title: const Text('선택한 곡 목록'),
+          title: const Text('선택곡 보기'),
           content: ConstrainedBox(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.sizeOf(previewContext).height * 0.5,
             ),
-            child: SingleChildScrollView(child: SelectableText(text)),
+            child: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '선택한 곡 ${songs.length}개',
+                    style: const TextStyle(
+                      color: tdmTextSub,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (setLimitReached) ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      '세트는 최대 10개까지 저장할 수 있어요.',
+                      style: TextStyle(
+                        color: tdmTextSub,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: SingleChildScrollView(child: SelectableText(text)),
+                  ),
+                ],
+              ),
+            ),
           ),
           actions: [
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 8,
-              runSpacing: 8,
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: setLimitReached
+                            ? null
+                            : () => _showSaveSongSetDialog(
+                                songs,
+                                onSaved: () {
+                                  if (previewContext.mounted) {
+                                    Navigator.of(previewContext).pop();
+                                  }
+                                  onSetSaved?.call();
+                                },
+                              ),
+                        child: const Text('세트 저장', maxLines: 1),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _showDeleteSelectedSongsDialog(
+                          songs,
+                          onDeleted: () {
+                            _runAfterFrame(() {
+                              if (previewContext.mounted) {
+                                Navigator.of(previewContext).pop();
+                              }
+                              onDeleted?.call();
+                            });
+                          },
+                        ),
+                        child: const Text('선택곡 삭제', maxLines: 1),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 OutlinedButton(
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: text));
-                    if (previewContext.mounted) {
-                      Navigator.of(previewContext).pop();
-                    }
-                    _showRootSnackBar('선택한 곡 목록을 복사했어요.');
+                    _showRootSnackBar('클립보드에 복사했어요.');
                   },
-                  child: const Text('클립보드에 복사'),
+                  child: const Text('클립보드에 복사', maxLines: 1),
                 ),
-                OutlinedButton(
-                  onPressed: () async {
-                    await SharePlus.instance.share(ShareParams(text: text));
-                  },
-                  child: const Text('공유하기'),
-                ),
-                OutlinedButton(
-                  onPressed: () => Navigator.of(previewContext).pop(),
-                  child: const Text('닫기'),
+                const SizedBox(height: 8),
+                Center(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(previewContext).pop(),
+                    child: const Text('닫기', maxLines: 1),
+                  ),
                 ),
               ],
             ),
