@@ -535,7 +535,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
       final wasSetRandom = _randomMode == RandomMode.songSets;
       _randomMode = RandomMode.artistRandom;
       if (showFallbackMessage && wasSetRandom && removedSelectedSet) {
-        _showRootSnackBar('선택한 세트가 삭제되어 가수 랜덤으로 변경했어요.');
+        _runAfterFrame(() {
+          _showRootSnackBar('선택한 세트가 삭제되어 가수 랜덤으로 변경했어요.');
+        });
       }
     }
   }
@@ -1684,6 +1686,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       showDragHandle: true,
       builder: (bottomSheetContext) {
         var storageTab = SongStorageTab.songs;
+        String? setStorageNotice;
 
         return StatefulBuilder(
           builder: (context, refreshSheet) {
@@ -1806,6 +1809,32 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           ],
                         ),
                         const SizedBox(height: 16),
+                        if (_randomMode == RandomMode.songSets &&
+                            _selectedSongSetIds.isNotEmpty) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
+                            child: const Text(
+                              '세트 랜덤 사용 중에는 가수 랜덤 설정이 잠시 적용되지 않아요.\n'
+                              '세트 선택을 모두 해제하면 다시 가수 랜덤을 사용할 수 있어요.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: tdmTextSub,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         Row(
                           children: [
                             Expanded(
@@ -1846,19 +1875,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        if (_randomMode == RandomMode.songSets) ...[
-                          const Text(
-                            '세트 랜덤 사용 중에는 가수 랜덤 설정이 잠시 적용되지 않아요.\n'
-                            '세트 선택을 모두 해제하면 다시 가수 랜덤을 사용할 수 있어요.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: tdmTextSub,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
                         ...artistEntries.map(
                           (entry) => ArtistSongGroupTile(
                             artist: entry.key,
@@ -1881,7 +1897,20 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         ),
                       ] else
                         _buildSongSetStorageTab(
-                          onChanged: () => refreshSheet(() {}),
+                          notice: setStorageNotice,
+                          onChanged: () {
+                            refreshSheet(() {
+                              if (_randomMode == RandomMode.songSets &&
+                                  _selectedSongSetIds.isNotEmpty) {
+                                setStorageNotice = null;
+                              }
+                            });
+                          },
+                          onReturnedToArtistRandom: () {
+                            refreshSheet(() {
+                              setStorageNotice = '가수 랜덤으로 변경했어요.';
+                            });
+                          },
                         ),
                     ],
                   ),
@@ -1894,7 +1923,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
     );
   }
 
-  Widget _buildSongSetStorageTab({VoidCallback? onChanged}) {
+  Widget _buildSongSetStorageTab({
+    String? notice,
+    VoidCallback? onChanged,
+    VoidCallback? onReturnedToArtistRandom,
+  }) {
     if (_songSets.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 32),
@@ -1909,6 +1942,27 @@ class _TodaySongPageState extends State<TodaySongPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (notice != null && notice.trim().isNotEmpty) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: tdmCardBackground,
+              borderRadius: BorderRadius.circular(8),
+              border: const Border.fromBorderSide(BorderSide(color: tdmBorder)),
+            ),
+            child: Text(
+              notice.trim(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: tdmTextSub,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         ..._songSets.map(
           (songSet) => SongSetTile(
             songSet: songSet,
@@ -1917,6 +1971,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
               songSet,
               selected: selected,
               onChanged: onChanged,
+              onReturnedToArtistRandom: onReturnedToArtistRandom,
             ),
             onTap: () =>
                 _showSongSetDetailDialog(songSet.id, onChanged: onChanged),
@@ -1930,6 +1985,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     SongSet songSet, {
     required bool selected,
     VoidCallback? onChanged,
+    VoidCallback? onReturnedToArtistRandom,
   }) {
     if (selected) {
       if (_selectedSongSetIds.contains(songSet.id)) {
@@ -1969,7 +2025,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
       return;
     }
 
-    _unselectSongSetForRandom(songSet, onChanged: onChanged);
+    _unselectSongSetForRandom(
+      songSet,
+      onChanged: onChanged,
+      onReturnedToArtistRandom: onReturnedToArtistRandom,
+    );
   }
 
   void _selectSongSetForRandom(SongSet songSet, {VoidCallback? onChanged}) {
@@ -1981,7 +2041,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
     onChanged?.call();
   }
 
-  void _unselectSongSetForRandom(SongSet songSet, {VoidCallback? onChanged}) {
+  void _unselectSongSetForRandom(
+    SongSet songSet, {
+    VoidCallback? onChanged,
+    VoidCallback? onReturnedToArtistRandom,
+  }) {
     if (!_selectedSongSetIds.contains(songSet.id)) {
       return;
     }
@@ -1997,7 +2061,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
     _saveRandomSelection();
     onChanged?.call();
     if (_randomMode == RandomMode.artistRandom) {
-      _showRootSnackBar('선택된 세트가 없어 가수 랜덤으로 변경했어요.');
+      onReturnedToArtistRandom?.call();
+      _runAfterFrame(() {
+        _showRootSnackBar('선택된 세트가 없어 가수 랜덤으로 변경했어요.');
+      });
     }
   }
 
@@ -3687,32 +3754,25 @@ class _TodaySongPageState extends State<TodaySongPage> {
               actions: [
                 Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: songSet.songs.isEmpty
-                                ? null
-                                : () async {
-                                    await Clipboard.setData(
-                                      ClipboardData(
-                                        text: _buildSongSetText(songSet),
-                                      ),
-                                    );
-                                    _showRootSnackBar('리스트를 클립보드에 복사했어요.');
-                                  },
-                            child: const Text('리스트 복사', maxLines: 1),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(detailContext).pop(),
-                            child: const Text('닫기', maxLines: 1),
-                          ),
-                        ),
-                      ],
+                    OutlinedButton(
+                      onPressed: songSet.songs.isEmpty
+                          ? null
+                          : () async {
+                              await Clipboard.setData(
+                                ClipboardData(text: _buildSongSetText(songSet)),
+                              );
+                              _showRootSnackBar('클립보드에 복사했어요.');
+                            },
+                      child: const Text('클립보드에 복사', maxLines: 1),
+                    ),
+                    const SizedBox(height: 8),
+                    Center(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(detailContext).pop(),
+                        child: const Text('닫기', maxLines: 1),
+                      ),
                     ),
                   ],
                 ),
@@ -4465,6 +4525,11 @@ class ArtistSongGroupTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final randomControlDisabled = onRandomToggle == null;
+    final disabledTextColor = Colors.grey.shade500;
+    final enabledTextColor = isRandomEnabled
+        ? colorScheme.onSurface
+        : colorScheme.onSurfaceVariant;
 
     return InkWell(
       onTap: onTap,
@@ -4473,11 +4538,17 @@ class ArtistSongGroupTile extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isRandomEnabled
+          color: randomControlDisabled
+              ? Colors.grey.shade100
+              : isRandomEnabled
               ? colorScheme.surfaceContainerHigh
               : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: colorScheme.outlineVariant),
+          border: Border.all(
+            color: randomControlDisabled
+                ? Colors.grey.shade300
+                : colorScheme.outlineVariant,
+          ),
         ),
         child: Row(
           children: [
@@ -4486,6 +4557,25 @@ class ArtistSongGroupTile extends StatelessWidget {
               onChanged: onRandomToggle == null
                   ? null
                   : (value) => onRandomToggle!(value ?? false),
+              checkColor: randomControlDisabled
+                  ? Colors.grey.shade500
+                  : Colors.white,
+              fillColor: WidgetStateProperty.resolveWith((states) {
+                if (randomControlDisabled) {
+                  return isRandomEnabled
+                      ? Colors.grey.shade300
+                      : Colors.grey.shade100;
+                }
+                if (states.contains(WidgetState.selected)) {
+                  return tdmPrimary;
+                }
+                return null;
+              }),
+              side: BorderSide(
+                color: randomControlDisabled
+                    ? Colors.grey.shade400
+                    : colorScheme.outline,
+              ),
               visualDensity: VisualDensity.compact,
             ),
             const SizedBox(width: 8),
@@ -4496,9 +4586,9 @@ class ArtistSongGroupTile extends StatelessWidget {
                   Text(
                     artist,
                     style: TextStyle(
-                      color: isRandomEnabled
-                          ? colorScheme.onSurface
-                          : colorScheme.onSurfaceVariant,
+                      color: randomControlDisabled
+                          ? disabledTextColor
+                          : enabledTextColor,
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
                     ),
@@ -4507,7 +4597,9 @@ class ArtistSongGroupTile extends StatelessWidget {
                   Text(
                     '${songs.length}곡',
                     style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
+                      color: randomControlDisabled
+                          ? Colors.grey.shade500
+                          : colorScheme.onSurfaceVariant,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -4517,7 +4609,9 @@ class ArtistSongGroupTile extends StatelessWidget {
             ),
             Icon(
               Icons.chevron_right,
-              color: colorScheme.onSurfaceVariant,
+              color: randomControlDisabled
+                  ? Colors.grey.shade400
+                  : colorScheme.onSurfaceVariant,
               size: 22,
             ),
           ],
