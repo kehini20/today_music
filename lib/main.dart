@@ -529,15 +529,16 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   List<SongSet> _songSetsSyncedWithSongs(List<SongSet> sets, List<Song> songs) {
-    final currentSongKeys = songs.map(_songDuplicateKey).toSet();
+    final currentSongsByKey = {
+      for (final song in songs) _songDuplicateKey(song): song,
+    };
 
     return sets
         .map(
           (set) => set.copyWith(
             songs: set.songs
-                .where(
-                  (song) => currentSongKeys.contains(_songDuplicateKey(song)),
-                )
+                .map((song) => currentSongsByKey[_songDuplicateKey(song)])
+                .whereType<Song>()
                 .toList(),
           ),
         )
@@ -590,6 +591,41 @@ class _TodaySongPageState extends State<TodaySongPage> {
           ),
         )
         .toList();
+  }
+
+  void _toggleSongFavorite(Song song, {VoidCallback? onChanged}) {
+    final songKey = _songDuplicateKey(song);
+    Song? updatedSong;
+
+    setState(() {
+      final index = _songs.indexWhere(
+        (storedSong) => _songDuplicateKey(storedSong) == songKey,
+      );
+      if (index == -1) {
+        return;
+      }
+
+      final originalSong = _songs[index];
+      updatedSong = originalSong.copyWith(isFavorite: !originalSong.isFavorite);
+      _songs[index] = updatedSong!;
+      _replaceSongInSets(originalSong, updatedSong!);
+
+      if (_selectedSong != null && _isSameSongResult(_selectedSong!, song)) {
+        _selectedSong = _songWithCurrentFavorite(_selectedSong!);
+      }
+      if (_lastResultSong != null &&
+          _isSameSongResult(_lastResultSong!, song)) {
+        _lastResultSong = _songWithCurrentFavorite(_lastResultSong!);
+      }
+    });
+
+    if (updatedSong == null) {
+      return;
+    }
+
+    _saveSongs();
+    _saveSongSets();
+    onChanged?.call();
   }
 
   bool _hasSongSetNamed(String name, {String? exceptId}) {
@@ -1410,8 +1446,64 @@ class _TodaySongPageState extends State<TodaySongPage> {
         '${song.title.trim().toLowerCase()}';
   }
 
+  Song? _storedSongMatching(Song song) {
+    final key = _songDuplicateKey(song);
+    for (final storedSong in _songs) {
+      if (_songDuplicateKey(storedSong) == key) {
+        return storedSong;
+      }
+    }
+    return null;
+  }
+
+  Song _songWithCurrentFavorite(Song song) {
+    final storedSong = _storedSongMatching(song);
+    if (storedSong == null) {
+      return song;
+    }
+    return song.copyWith(isFavorite: storedSong.isFavorite);
+  }
+
+  bool _isSongFavorite(Song song) {
+    return _storedSongMatching(song)?.isFavorite ?? song.isFavorite;
+  }
+
   bool _isSameSongResult(Song first, Song second) {
     return _songDuplicateKey(first) == _songDuplicateKey(second);
+  }
+
+  Widget _favoriteSongIconButton(Song song, {VoidCallback? onChanged}) {
+    final isFavorite = _isSongFavorite(song);
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      tooltip: isFavorite
+          ? '\uC990\uACA8\uCC3E\uAE30 \uD574\uC81C'
+          : '\uC990\uACA8\uCC3E\uAE30 \uCD94\uAC00',
+      onPressed: () => _toggleSongFavorite(song, onChanged: onChanged),
+      icon: Icon(
+        isFavorite ? Icons.star : Icons.star_border,
+        size: 19,
+        color: isFavorite ? const Color(0xFFF2B84B) : tdmTextSub,
+      ),
+    );
+  }
+
+  Widget _favoriteFilterToggle({
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      tooltip: value
+          ? '\uC990\uACA8\uCC3E\uAE30\uB9CC \uBCF4\uAE30 \uD574\uC81C'
+          : '\uC990\uACA8\uCC3E\uAE30\uB9CC \uBCF4\uAE30',
+      onPressed: () => onChanged(!value),
+      icon: Icon(
+        value ? Icons.star : Icons.star_border,
+        size: 22,
+        color: value ? const Color(0xFFF2B84B) : tdmTextSub,
+      ),
+    );
   }
 
   void _showImportResultDialog(String message) {
@@ -1571,6 +1663,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
         return;
       }
 
+      updatedSong = updatedSong.copyWith(isFavorite: _songs[index].isFavorite);
       _songs[index] = updatedSong;
       didUpdate = true;
       _replaceSongInSets(originalSong, updatedSong);
@@ -3845,6 +3938,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final searchController = TextEditingController();
     final songListScrollController = ScrollController();
     var isArtistDialogClosed = false;
+    var showFavoritesOnly = false;
 
     void resetSongListScroll() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3867,6 +3961,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 .trim()
                 .toLowerCase();
             final songs = allArtistSongs.where((song) {
+              if (showFavoritesOnly && !_isSongFavorite(song)) {
+                return false;
+              }
               if (normalizedArtistSongQuery.isEmpty) {
                 return true;
               }
@@ -3901,6 +3998,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 MediaQuery.sizeOf(dialogContext).height -
                 MediaQuery.viewInsetsOf(dialogContext).bottom;
             final contentMaxHeight = max(240.0, availableDialogHeight - 260);
+            final artistSongsCanScroll =
+                songs.length * 52 > max(0, contentMaxHeight - 136);
 
             return AlertDialog(
               actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
@@ -3964,38 +4063,64 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         },
                       ),
                       const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: SegmentedButton<SongListSortMode>(
-                          showSelectedIcon: false,
-                          segments: const [
-                            ButtonSegment(
-                              value: SongListSortMode.added,
-                              label: Text('추가순'),
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 48,
+                            child: _favoriteFilterToggle(
+                              value: showFavoritesOnly,
+                              onChanged: (selected) {
+                                refreshDialog(() {
+                                  showFavoritesOnly = selected;
+                                });
+                                resetSongListScroll();
+                              },
                             ),
-                            ButtonSegment(
-                              value: SongListSortMode.title,
-                              label: Text('곡명순'),
+                          ),
+                          const SizedBox(width: 8),
+                          const Spacer(),
+                          Flexible(
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: SegmentedButton<SongListSortMode>(
+                                  showSelectedIcon: false,
+                                  segments: const [
+                                    ButtonSegment(
+                                      value: SongListSortMode.added,
+                                      label: Text('\uCD94\uAC00\uC21C'),
+                                    ),
+                                    ButtonSegment(
+                                      value: SongListSortMode.title,
+                                      label: Text('\uACE1\uBA85\uC21C'),
+                                    ),
+                                  ],
+                                  selected: {songSortMode},
+                                  onSelectionChanged: (selection) {
+                                    refreshDialog(() {
+                                      songSortMode = selection.first;
+                                    });
+                                    resetSongListScroll();
+                                  },
+                                ),
+                              ),
                             ),
-                          ],
-                          selected: {songSortMode},
-                          onSelectionChanged: (selection) {
-                            refreshDialog(() {
-                              songSortMode = selection.first;
-                            });
-                            resetSongListScroll();
-                          },
-                        ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       if (songs.isEmpty)
-                        const Expanded(
+                        Expanded(
                           child: Center(
                             child: SingleChildScrollView(
                               child: Padding(
                                 padding: EdgeInsets.symmetric(vertical: 8),
                                 child: Text(
-                                  '\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC5B4\uC694.',
+                                  showFavoritesOnly &&
+                                          normalizedArtistSongQuery.isEmpty
+                                      ? '\uC990\uACA8\uCC3E\uAE30\uD55C \uACE1\uC774 \uC5C6\uC5B4\uC694.'
+                                      : '\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC5B4\uC694.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: tdmTextSub,
@@ -4010,10 +4135,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         Expanded(
                           child: Scrollbar(
                             controller: songListScrollController,
-                            thumbVisibility: true,
+                            thumbVisibility: artistSongsCanScroll,
                             child: ListView.separated(
                               controller: songListScrollController,
-                              padding: const EdgeInsets.only(right: 8),
+                              padding: EdgeInsets.only(
+                                right: artistSongsCanScroll ? 8 : 0,
+                              ),
                               itemCount: songs.length,
                               separatorBuilder: (context, index) =>
                                   const Divider(height: 10),
@@ -4027,6 +4154,18 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                   ),
                                   child: Row(
                                     children: [
+                                      SizedBox(
+                                        width: 48,
+                                        child: _favoriteSongIconButton(
+                                          song,
+                                          onChanged: () {
+                                            if (dialogContext.mounted) {
+                                              refreshDialog(() {});
+                                            }
+                                            onSongChanged?.call();
+                                          },
+                                        ),
+                                      ),
                                       Expanded(
                                         child: Text(
                                           song.title,
@@ -4146,6 +4285,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final searchController = TextEditingController();
     final allSongsScrollController = ScrollController();
     var isAllSongsDialogClosed = false;
+    var showFavoritesOnly = false;
 
     void resetAllSongsScroll() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -4164,28 +4304,43 @@ class _TodaySongPageState extends State<TodaySongPage> {
             final songs = _allSongsForOverview();
             final query = searchController.text;
             final visibleSongs = songs
-                .where((song) => _matchesSongSearch(song, query))
+                .where(
+                  (song) =>
+                      (!showFavoritesOnly || _isSongFavorite(song)) &&
+                      _matchesSongSearch(song, query),
+                )
                 .toList();
             final selectedCount = selectedSongs.length;
             final setLimitReached = _songSets.length >= maxSongSetCount;
             final selectedVisibleSongs = visibleSongs
                 .where(selectedSongs.contains)
                 .toList();
+            final bool? visibleSelectionValue = visibleSongs.isEmpty
+                ? false
+                : selectedVisibleSongs.length == visibleSongs.length
+                ? true
+                : selectedVisibleSongs.isEmpty
+                ? false
+                : null;
+            final allSongsContentMaxHeight = max(
+              220.0,
+              MediaQuery.sizeOf(dialogContext).height -
+                  MediaQuery.viewInsetsOf(dialogContext).bottom -
+                  190,
+            );
+            final allSongsCanScroll =
+                visibleSongs.length * 58 >
+                max(0, allSongsContentMaxHeight - 190);
 
             return AlertDialog(
-              title: const Text('\uC804\uCCB4\uACE1 \uBCF4\uAE30'),
+              title: const Text('\uC804\uCCB4\uACE1'),
               insetPadding: const EdgeInsets.symmetric(
                 horizontal: 24,
                 vertical: 12,
               ),
               content: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight: max(
-                    220.0,
-                    MediaQuery.sizeOf(dialogContext).height -
-                        MediaQuery.viewInsetsOf(dialogContext).bottom -
-                        190,
-                  ),
+                  maxHeight: allSongsContentMaxHeight,
                 ),
                 child: SizedBox(
                   width: double.maxFinite,
@@ -4227,33 +4382,49 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          OutlinedButton(
-                            onPressed: visibleSongs.isEmpty
-                                ? null
-                                : () {
-                                    refreshDialog(() {
-                                      selectedSongs.addAll(visibleSongs);
-                                    });
-                                  },
-                            child: const Text(
-                              '\uC804\uCCB4\uC120\uD0DD',
-                              maxLines: 1,
+                          SizedBox(
+                            width: 48,
+                            child: Tooltip(
+                              message: visibleSelectionValue == true
+                                  ? '\uC804\uCCB4\uC120\uD0DD \uD574\uC81C'
+                                  : visibleSelectionValue == null
+                                  ? '\uC77C\uBD80 \uC120\uD0DD\uB428'
+                                  : '\uC804\uCCB4\uC120\uD0DD',
+                              child: Checkbox(
+                                tristate: true,
+                                value: visibleSelectionValue,
+                                onChanged: visibleSongs.isEmpty
+                                    ? null
+                                    : (checked) {
+                                        refreshDialog(() {
+                                          if (visibleSelectionValue == true) {
+                                            selectedSongs.removeAll(
+                                              visibleSongs,
+                                            );
+                                          } else {
+                                            selectedSongs.addAll(visibleSongs);
+                                          }
+                                        });
+                                      },
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            onPressed: selectedVisibleSongs.isEmpty
-                                ? null
-                                : () {
-                                    refreshDialog(() {
-                                      selectedSongs.removeAll(visibleSongs);
-                                    });
-                                  },
-                            child: const Text(
-                              '\uC120\uD0DD\uD574\uC81C',
-                              maxLines: 1,
+                          SizedBox(
+                            width: 48,
+                            child: _favoriteFilterToggle(
+                              value: showFavoritesOnly,
+                              onChanged: (selected) {
+                                refreshDialog(() {
+                                  showFavoritesOnly = selected;
+                                });
+                                resetAllSongsScroll();
+                              },
                             ),
                           ),
+                          const Spacer(),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -4266,10 +4437,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           ),
                         )
                       else if (visibleSongs.isEmpty)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.symmetric(vertical: 28),
                           child: Text(
-                            '\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC5B4\uC694.',
+                            showFavoritesOnly && query.trim().isEmpty
+                                ? '\uC990\uACA8\uCC3E\uAE30\uD55C \uACE1\uC774 \uC5C6\uC5B4\uC694.'
+                                : '\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC5B4\uC694.',
                             textAlign: TextAlign.center,
                           ),
                         )
@@ -4277,10 +4450,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         Flexible(
                           child: Scrollbar(
                             controller: allSongsScrollController,
-                            thumbVisibility: true,
+                            thumbVisibility: allSongsCanScroll,
                             child: ListView.separated(
                               controller: allSongsScrollController,
-                              padding: const EdgeInsets.only(right: 8),
+                              padding: EdgeInsets.only(
+                                right: allSongsCanScroll ? 8 : 0,
+                              ),
                               shrinkWrap: true,
                               itemCount: visibleSongs.length,
                               separatorBuilder: (context, index) =>
@@ -4289,37 +4464,62 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 final song = visibleSongs[index];
                                 final checked = selectedSongs.contains(song);
 
-                                return CheckboxListTile(
+                                return Padding(
                                   key: ValueKey(
                                     'all-songs-${_songDuplicateKey(song)}-$index',
                                   ),
-                                  dense: true,
-                                  value: checked,
-                                  controlAffinity:
-                                      ListTileControlAffinity.leading,
-                                  contentPadding: EdgeInsets.zero,
-                                  secondary: IconButton(
-                                    tooltip:
-                                        '\uD3EC\uD568\uB41C \uC138\uD2B8 \uBCF4\uAE30',
-                                    icon: const Icon(
-                                      Icons.folder_copy_outlined,
-                                    ),
-                                    onPressed: () =>
-                                        _showSongIncludedSetsDialog(song),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 2,
                                   ),
-                                  onChanged: (value) {
-                                    refreshDialog(() {
-                                      if (value ?? false) {
-                                        selectedSongs.add(song);
-                                      } else {
-                                        selectedSongs.remove(song);
-                                      }
-                                    });
-                                  },
-                                  title: Text(
-                                    '${song.artist} - ${song.title}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 48,
+                                        child: Checkbox(
+                                          value: checked,
+                                          onChanged: (value) {
+                                            refreshDialog(() {
+                                              if (value ?? false) {
+                                                selectedSongs.add(song);
+                                              } else {
+                                                selectedSongs.remove(song);
+                                              }
+                                            });
+                                          },
+                                          visualDensity: VisualDensity.compact,
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 48,
+                                        child: _favoriteSongIconButton(
+                                          song,
+                                          onChanged: () {
+                                            refreshDialog(() {});
+                                            if (showFavoritesOnly) {
+                                              resetAllSongsScroll();
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          '${song.artist} - ${song.title}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip:
+                                            '\uD3EC\uD568\uB41C \uC138\uD2B8 \uBCF4\uAE30',
+                                        icon: const Icon(
+                                          Icons.folder_copy_outlined,
+                                        ),
+                                        onPressed: () =>
+                                            _showSongIncludedSetsDialog(song),
+                                      ),
+                                    ],
                                   ),
                                 );
                               },
@@ -4438,6 +4638,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     }
 
     final text = _buildSelectedSongsText(songs);
+    final selectedSongsPreviewScrollController = ScrollController();
 
     void saveSelectedSongs(BuildContext previewContext) {
       _showSaveSongSetDialog(
@@ -4457,12 +4658,16 @@ class _TodaySongPageState extends State<TodaySongPage> {
     showDialog<void>(
       context: context,
       builder: (previewContext) {
+        final previewContentMaxHeight =
+            MediaQuery.sizeOf(previewContext).height * 0.5;
+        final selectedSongsPreviewCanScroll =
+            text.split('\n').length * 20 >
+            max(0, previewContentMaxHeight - (setLimitReached ? 84 : 56));
+
         return AlertDialog(
           title: const Text('\uC120\uD0DD\uACE1 \uBCF4\uAE30'),
           content: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(previewContext).height * 0.5,
-            ),
+            constraints: BoxConstraints(maxHeight: previewContentMaxHeight),
             child: SizedBox(
               width: double.maxFinite,
               child: Column(
@@ -4490,7 +4695,17 @@ class _TodaySongPageState extends State<TodaySongPage> {
                   ],
                   const SizedBox(height: 12),
                   Flexible(
-                    child: SingleChildScrollView(child: SelectableText(text)),
+                    child: Scrollbar(
+                      controller: selectedSongsPreviewScrollController,
+                      thumbVisibility: selectedSongsPreviewCanScroll,
+                      child: SingleChildScrollView(
+                        controller: selectedSongsPreviewScrollController,
+                        padding: EdgeInsets.only(
+                          right: selectedSongsPreviewCanScroll ? 8 : 0,
+                        ),
+                        child: SelectableText(text),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -4569,7 +4784,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
           ],
         );
       },
-    );
+    ).whenComplete(selectedSongsPreviewScrollController.dispose);
   }
 
   void _showSaveSongSetDialog(List<Song> songs, {VoidCallback? onSaved}) {
@@ -5051,6 +5266,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
               return const AlertDialog(content: Text('세트를 찾을 수 없어요.'));
             }
 
+            final songSetContentMaxHeight =
+                MediaQuery.sizeOf(detailContext).height * 0.55;
+            final songSetSongsCanScroll =
+                songSet.songs.length * 46 >
+                max(0, songSetContentMaxHeight - 34);
+
             return AlertDialog(
               title: Row(
                 children: [
@@ -5089,9 +5310,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 ],
               ),
               content: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(detailContext).height * 0.55,
-                ),
+                constraints: BoxConstraints(maxHeight: songSetContentMaxHeight),
                 child: SizedBox(
                   width: double.maxFinite,
                   child: Column(
@@ -5112,10 +5331,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         Flexible(
                           child: Scrollbar(
                             controller: songSetDetailScrollController,
-                            thumbVisibility: true,
+                            thumbVisibility: songSetSongsCanScroll,
                             child: ListView.separated(
                               controller: songSetDetailScrollController,
-                              padding: const EdgeInsets.only(right: 8),
+                              padding: EdgeInsets.only(
+                                right: songSetSongsCanScroll ? 8 : 0,
+                              ),
                               shrinkWrap: true,
                               itemCount: songSet.songs.length,
                               separatorBuilder: (context, index) =>
@@ -5130,6 +5351,15 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
+                                    ),
+                                    _favoriteSongIconButton(
+                                      song,
+                                      onChanged: () {
+                                        if (detailContext.mounted) {
+                                          refreshDialog(() {});
+                                        }
+                                        onChanged?.call();
+                                      },
                                     ),
                                     IconButton(
                                       visualDensity: VisualDensity.compact,
@@ -5744,8 +5974,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         children: [
                           if (_selectedSong != null) ...[
                             SongResultCard(
-                              song: _selectedSong,
+                              song: _songWithCurrentFavorite(_selectedSong!),
                               sourceSetName: _resultSongSetName,
+                              isFavorite: _isSongFavorite(_selectedSong!),
+                              onFavoriteToggle: () =>
+                                  _toggleSongFavorite(_selectedSong!),
                             ),
                             const SizedBox(height: 16),
                             _PickSongButton(
@@ -6995,8 +7228,16 @@ class _MainSponsorImagePlaceholder extends StatelessWidget {
 class SongResultCard extends StatelessWidget {
   final Song? song;
   final String? sourceSetName;
+  final bool isFavorite;
+  final VoidCallback? onFavoriteToggle;
 
-  const SongResultCard({super.key, required this.song, this.sourceSetName});
+  const SongResultCard({
+    super.key,
+    required this.song,
+    this.sourceSetName,
+    this.isFavorite = false,
+    this.onFavoriteToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -7030,13 +7271,50 @@ class SongResultCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            song!.artist,
-            style: TextStyle(
-              color: colorScheme.onPrimaryContainer,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
+          if (sourceSetName != null && sourceSetName!.trim().isNotEmpty) ...[
+            Text(
+              '\u2018${sourceSetName!.trim()}\u2019 \uC138\uD2B8',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colorScheme.onPrimaryContainer.withValues(alpha: 0.72),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
+            const SizedBox(height: 8),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  song!.artist,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colorScheme.onPrimaryContainer,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: isFavorite
+                    ? '\uC990\uACA8\uCC3E\uAE30 \uD574\uC81C'
+                    : '\uC990\uACA8\uCC3E\uAE30 \uCD94\uAC00',
+                onPressed: onFavoriteToggle,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                icon: Icon(
+                  isFavorite ? Icons.star : Icons.star_border,
+                  color: isFavorite
+                      ? const Color(0xFFF2B84B)
+                      : colorScheme.onPrimaryContainer.withValues(alpha: 0.72),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(
@@ -7047,19 +7325,6 @@ class SongResultCard extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
-          if (sourceSetName != null && sourceSetName!.trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              '‘${sourceSetName!.trim()}’ 세트',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colorScheme.onPrimaryContainer.withValues(alpha: 0.72),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
           if (song!.memo.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(

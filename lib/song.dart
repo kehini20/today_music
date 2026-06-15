@@ -4,6 +4,7 @@ class Song {
   final List<String> tags;
   final String memo;
   final String link;
+  final bool isFavorite;
 
   const Song({
     required this.artist,
@@ -11,6 +12,7 @@ class Song {
     required this.tags,
     this.memo = '',
     this.link = '',
+    this.isFavorite = false,
   });
 
   factory Song.fromJson(Map<String, Object?> json) {
@@ -24,6 +26,7 @@ class Song {
           : const [],
       memo: (json['memo'] as String?)?.trim() ?? '',
       link: (json['link'] as String?)?.trim() ?? '',
+      isFavorite: json['isFavorite'] == true,
     );
   }
 
@@ -34,8 +37,38 @@ class Song {
       'tags': tags,
       'memo': memo,
       'link': link,
+      'isFavorite': isFavorite,
     };
   }
+
+  Song copyWith({
+    String? artist,
+    String? title,
+    List<String>? tags,
+    String? memo,
+    String? link,
+    bool? isFavorite,
+  }) {
+    return Song(
+      artist: artist ?? this.artist,
+      title: title ?? this.title,
+      tags: tags ?? this.tags,
+      memo: memo ?? this.memo,
+      link: link ?? this.link,
+      isFavorite: isFavorite ?? this.isFavorite,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is Song &&
+        artist.trim().toLowerCase() == other.artist.trim().toLowerCase() &&
+        title.trim().toLowerCase() == other.title.trim().toLowerCase();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(artist.trim().toLowerCase(), title.trim().toLowerCase());
 }
 
 Map<String, List<Song>> songsByArtist(List<Song> songs) {
