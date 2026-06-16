@@ -100,7 +100,9 @@ class _PasteSongParser {
     final drafts = <PasteSongDraft>[];
     var lineIndex = 0;
 
-    for (final rawLine in const LineSplitter().convert(text)) {
+    for (final rawLine in _mergeNumberOnlyLines(
+      const LineSplitter().convert(text),
+    )) {
       final rawTrimmedLine = rawLine.trim();
       if (rawTrimmedLine.isEmpty) {
         lineIndex++;
@@ -229,6 +231,13 @@ class _PasteSongParser {
         .where((line) => !_isTdmSharedListMetaLine(line))
         .toList();
     final topLines = lines.take(5).toList();
+
+    for (final line in topLines) {
+      final setlistArtist = _artistFromSetlistHeader(line);
+      if (setlistArtist.isNotEmpty) {
+        return setlistArtist;
+      }
+    }
 
     for (final line in topLines) {
       final bracketArtist = _artistFromBracketHeader(line);
@@ -364,7 +373,9 @@ class _PasteSongParser {
     var line = rawLine.trim().replaceAll(RegExp(r'\s+'), ' ');
     line = line.replaceFirst(RegExp(r'^#\d+\s+(?=.*\s(?:-|–|—|/)\s)'), '');
     line = line.replaceFirst(RegExp(r'^[+\-*•]\s*'), '');
-    line = line.replaceFirst(RegExp(r'^\d+\s*(?:[.)\uFF0E]\s*|[-:]\s+)'), '');
+    line = line.replaceFirst(RegExp(r'^\d+\s*(?:[.)\uFF0E]\s*|[-:]\s*)'), '');
+    line = _stripPerformanceSuffix(line);
+    line = _unwrapWholeLineParentheses(line);
     line = line.replaceFirst(RegExp(r'^[+\-*•]\s*'), '');
     return line
         .replaceAll(RegExp(r'''["“”‘’]'''), '')
@@ -504,6 +515,11 @@ class _PasteSongParser {
       }
     }
 
+    final decoratedHeaderArtist = _artistFromDecoratedEventHeader(line);
+    if (decoratedHeaderArtist.isNotEmpty) {
+      return decoratedHeaderArtist;
+    }
+
     final concertKeywordArtist = _artistFromConcertKeywordHeader(line);
     if (concertKeywordArtist.isNotEmpty) {
       return concertKeywordArtist;
@@ -533,6 +549,15 @@ class _PasteSongParser {
     return _looksLikeArtistCandidate(candidate) ? candidate : '';
   }
 
+  String _artistFromDecoratedEventHeader(String line) {
+    final cleaned = _cleanArtistCandidate(line);
+    if (!_looksLikeEventHeader(cleaned)) {
+      return '';
+    }
+
+    return _cleanDecoratedEventArtistCandidate(cleaned);
+  }
+
   String _artistFromConcertKeywordHeader(String line) {
     final cleaned = _cleanArtistCandidate(line);
     final withoutSetlist = cleaned
@@ -556,12 +581,14 @@ class _PasteSongParser {
         continue;
       }
 
-      final before = _cleanArtistCandidate(withoutSetlist.substring(0, index));
+      final before = _cleanDecoratedEventArtistCandidate(
+        withoutSetlist.substring(0, index),
+      );
       if (_looksLikeArtistCandidate(before)) {
         return before;
       }
 
-      final after = _cleanArtistCandidate(
+      final after = _cleanDecoratedEventArtistCandidate(
         withoutSetlist
             .substring(index + keyword.length)
             .replaceAll(
@@ -585,12 +612,14 @@ class _PasteSongParser {
         continue;
       }
 
-      final before = _cleanArtistCandidate(withoutSetlist.substring(0, index));
+      final before = _cleanDecoratedEventArtistCandidate(
+        withoutSetlist.substring(0, index),
+      );
       if (_looksLikeArtistCandidate(before)) {
         return before;
       }
 
-      final after = _cleanArtistCandidate(
+      final after = _cleanDecoratedEventArtistCandidate(
         withoutSetlist.substring(index + keyword.length),
       );
       if (_looksLikeArtistCandidate(after)) {
@@ -601,12 +630,68 @@ class _PasteSongParser {
     return '';
   }
 
+  String _cleanDecoratedEventArtistCandidate(String value) {
+    var candidate = _cleanArtistCandidate(value);
+    candidate = candidate
+        .replaceAll(RegExp(r'\b\d{4}\b'), ' ')
+        .replaceAll(RegExp(r'\bday\s*\d+\b', caseSensitive: false), ' ')
+        .replaceAll(
+          RegExp(r'\bin\s+(?:seoul|tokyo|busan)\b', caseSensitive: false),
+          ' ',
+        )
+        .replaceAll(
+          RegExp(
+            r'\b(?:ocr|test|live|tour|concert|festival|fest|showcase|arena|hall|stage|busan|seoul|tokyo)\b',
+            caseSensitive: false,
+          ),
+          ' ',
+        )
+        .replaceAll(RegExp(r'[_\-–—:/,]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    return _looksLikeDecoratedEventArtistCandidate(candidate) ? candidate : '';
+  }
+
+  bool _looksLikeDecoratedEventArtistCandidate(String value) {
+    final candidate = value.trim();
+    if (!_looksLikeArtistCandidate(candidate)) {
+      return false;
+    }
+
+    final normalized = candidate.toLowerCase().replaceAll(
+      RegExp(r'[\s._\-]+'),
+      '',
+    );
+    const blocked = {
+      'awesome',
+      'music',
+      'tdm',
+      'tdmmusic',
+      'todaymusic',
+      'todaydrawmusic',
+    };
+    if (blocked.contains(normalized)) {
+      return false;
+    }
+
+    if (candidate.split(RegExp(r'\s+')).length > 2) {
+      return false;
+    }
+
+    return RegExp(r'[A-Za-z가-힣ぁ-んァ-ヶ一-龯々]').hasMatch(candidate);
+  }
+
   bool _isPastedMetaLine(String line, String inferredArtist, int lineIndex) {
     if (RegExp(r'^[=\-–—_\s]+$').hasMatch(line)) {
       return true;
     }
 
     if (_isTdmSharedListMetaLine(line)) {
+      return true;
+    }
+
+    if (_isEncoreOrPerformanceMetaLine(line) || _isNoisyOcrMetaFragment(line)) {
       return true;
     }
 
@@ -685,6 +770,10 @@ class _PasteSongParser {
       return true;
     }
 
+    if (trimmed.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') == 'plain text') {
+      return true;
+    }
+
     final tokens = trimmed.split(RegExp(r'\s+'));
     if (tokens.isNotEmpty &&
         tokens.every((token) => token.startsWith('#') && token.length > 1)) {
@@ -712,6 +801,11 @@ class _PasteSongParser {
     final lowerValue = value.toLowerCase();
     return lowerValue.contains('setlist') ||
         lowerValue.contains('live') ||
+        lowerValue.contains('tour') ||
+        lowerValue.contains('arena') ||
+        lowerValue.contains('hall') ||
+        lowerValue.contains('showcase') ||
+        lowerValue.contains('fest') ||
         lowerValue.contains('busking') ||
         value.contains(_kSetlist) ||
         value.contains(_kConcert) ||
@@ -761,6 +855,99 @@ class _PasteSongParser {
         RegExp(r'^\d{4}\s+\d{1,2}\s+\d{1,2}$').hasMatch(compactValue);
   }
 
+  List<String> _mergeNumberOnlyLines(List<String> lines) {
+    final merged = <String>[];
+    for (var index = 0; index < lines.length; index++) {
+      final current = lines[index];
+      final trimmed = current.trim();
+      if (_isStandaloneListNumberLine(trimmed)) {
+        var nextIndex = index + 1;
+        String? nextLine;
+        while (nextIndex < lines.length) {
+          final candidate = lines[nextIndex].trim();
+          if (candidate.isNotEmpty) {
+            nextLine = candidate;
+            break;
+          }
+          nextIndex++;
+        }
+        if (nextLine != null && !_isPastedMetaLine(nextLine, '', nextIndex)) {
+          merged.add('$trimmed $nextLine');
+          index = nextIndex;
+        }
+        continue;
+      }
+      merged.add(current);
+    }
+    return merged;
+  }
+
+  bool _isStandaloneListNumberLine(String line) {
+    return RegExp(r'^\d+\s*[.)．:]$').hasMatch(line.trim());
+  }
+
+  String _artistFromSetlistHeader(String line) {
+    final match = RegExp(
+      r'^(?:\d{4}[./-]\d{1,2}[./-]\d{1,2}\s+)?(.+?)\s+(?:셋리스트|setlist)$',
+      caseSensitive: false,
+    ).firstMatch(line.trim());
+    if (match == null) {
+      return '';
+    }
+    final candidate = _cleanArtistCandidate(match.group(1) ?? '');
+    return _looksLikeArtistCandidate(candidate) ? candidate : '';
+  }
+
+  String _stripPerformanceSuffix(String value) {
+    return value
+        .replaceFirst(
+          RegExp(r'\s*-\s*(?:앵콜\d*|한번 더|encore\d*)\s*$', caseSensitive: false),
+          '',
+        )
+        .trim();
+  }
+
+  String _unwrapWholeLineParentheses(String value) {
+    final trimmed = value.trim();
+    final match = RegExp(r'^\(([^()]+)\)$').firstMatch(trimmed);
+    if (match == null) {
+      return trimmed;
+    }
+    return (match.group(1) ?? '').trim();
+  }
+
+  bool _isEncoreOrPerformanceMetaLine(String line) {
+    final normalized = line.trim().replaceAll(RegExp(r'\s+'), '').toLowerCase();
+    return normalized == 'mc' ||
+        normalized == 'm.c.' ||
+        RegExp(r'^앵콜\d*$').hasMatch(normalized) ||
+        RegExp(r'^encore\d*$').hasMatch(normalized);
+  }
+
+  bool _isNoisyOcrMetaFragment(String line) {
+    final candidate = line.trim();
+    if (RegExp(r'^\d+\)$').hasMatch(candidate)) {
+      return true;
+    }
+    if (candidate.contains(RegExp(r'\s')) ||
+        candidate.contains('(') ||
+        candidate.contains(')')) {
+      return false;
+    }
+    return _hasHighSymbolRatio(candidate) && candidate.length <= 12;
+  }
+
+  bool _hasHighSymbolRatio(String value) {
+    final compact = value.replaceAll(RegExp(r'\s+'), '');
+    if (compact.isEmpty) {
+      return true;
+    }
+    final symbols = compact
+        .replaceAll(RegExp(r'[A-Za-z0-9가-힣ぁ-んァ-ヶ一-龯々ー]'), '')
+        .length;
+    return symbols / compact.length >= 0.35;
+  }
+
   Set<String> _knownArtistNamesForPaste() {
     return {
       ...existingSongs.map((song) => song.artist),
@@ -800,4 +987,117 @@ class _PasteSongParser {
           .replaceAll(RegExp(r'[~!@#$%^&*_+=|\\<>?;:,.·ㆍ]'), ' '),
     );
   }
+}
+
+List<String?> buildOcrTitleAlternatives({
+  required String primaryText,
+  required String alternateText,
+}) {
+  final parser = _PasteSongParser(
+    existingSongs: const [],
+    knownSongs: const [],
+  );
+  final primaryCandidates = _extractOcrTitleCandidates(parser, primaryText);
+  final alternateCandidates = _extractOcrTitleCandidates(parser, alternateText);
+  final alternateByNumber = <int, _OcrTitleCandidate>{};
+  for (final candidate in alternateCandidates) {
+    final number = candidate.number;
+    if (number != null && candidate.title.trim().isNotEmpty) {
+      alternateByNumber.putIfAbsent(number, () => candidate);
+    }
+  }
+
+  return List<String?>.generate(primaryCandidates.length, (index) {
+    final primary = primaryCandidates[index];
+    final primaryNumber = primary.number;
+    if (primaryNumber != null) {
+      return alternateByNumber[primaryNumber]?.title;
+    }
+
+    if (index >= alternateCandidates.length) {
+      return null;
+    }
+
+    final alternate = alternateCandidates[index];
+    if (alternate.number != null) {
+      return null;
+    }
+
+    return alternate.title.trim().isEmpty ? null : alternate.title;
+  });
+}
+
+List<_OcrTitleCandidate> _extractOcrTitleCandidates(
+  _PasteSongParser parser,
+  String text,
+) {
+  final inferredArtist = parser._inferPastedArtist(text);
+  final candidates = <_OcrTitleCandidate>[];
+  var lineIndex = 0;
+
+  for (final rawLine in parser._mergeNumberOnlyLines(
+    const LineSplitter().convert(text),
+  )) {
+    final rawTrimmedLine = rawLine.trim();
+    if (rawTrimmedLine.isEmpty) {
+      lineIndex++;
+      continue;
+    }
+
+    if (parser._isPastedMetaLine(rawTrimmedLine, inferredArtist, lineIndex)) {
+      lineIndex++;
+      continue;
+    }
+
+    final number = _extractOcrListNumber(rawTrimmedLine);
+    final isNumberedArtistTitleLine = parser._isHashNumberedArtistTitleLine(
+      rawTrimmedLine,
+    );
+    final cleanedLine = parser._cleanPastedSongLine(rawLine);
+    if (cleanedLine.isEmpty) {
+      lineIndex++;
+      continue;
+    }
+
+    if (parser._isPastedMetaLine(cleanedLine, inferredArtist, lineIndex)) {
+      lineIndex++;
+      continue;
+    }
+
+    final parsedSong = parser._parsePastedSongLine(
+      cleanedLine,
+      hasInferredArtist: inferredArtist.trim().isNotEmpty,
+      forceArtistTitleOrder: isNumberedArtistTitleLine,
+    );
+    final title =
+        parsedSong?.title ??
+        parser._parseTitleOnlyPastedLine(
+          cleanedLine,
+          allowSeparators: inferredArtist.trim().isNotEmpty,
+        );
+
+    if (title != null && title.trim().isNotEmpty) {
+      candidates.add(_OcrTitleCandidate(number: number, title: title.trim()));
+    }
+    lineIndex++;
+  }
+
+  return candidates;
+}
+
+int? _extractOcrListNumber(String line) {
+  final match = RegExp(
+    r'^\s*(\d{1,3})\s*(?:[.)．]\s*|[-:]\s*)',
+  ).firstMatch(line);
+  if (match == null) {
+    return null;
+  }
+  return int.tryParse(match.group(1) ?? '');
+}
+
+class _OcrTitleCandidate {
+  final int? number;
+  final String title;
+
+  const _OcrTitleCandidate({required this.number, required this.title});
 }

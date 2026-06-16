@@ -6,11 +6,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'sample_songs.dart';
+import 'ocr/text_ocr_service.dart';
 import 'paste_parser.dart';
 import 'song.dart';
 import 'sponsor_ad.dart';
@@ -2582,9 +2584,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final memoController = TextEditingController();
     final tagsController = TextEditingController();
     final linkController = TextEditingController();
+    final imagePicker = ImagePicker();
+    const textOcrService = TextOcrService();
     String artistName = '';
     String? artistErrorText;
     String? titleErrorText;
+    var isOcrRunning = false;
+    List<String?> ocrTitleAlternatives = const [];
 
     void disposeControllers() {
       pasteController.dispose();
@@ -2682,6 +2688,158 @@ class _TodaySongPageState extends State<TodaySongPage> {
                   curve: Curves.easeOutCubic,
                 );
               });
+            }
+
+            String oppositeOcrText(
+              OcrRecognitionResult result,
+              OcrRecognitionMode source,
+            ) {
+              final oppositeSource = source == OcrRecognitionMode.korean
+                  ? OcrRecognitionMode.japanese
+                  : OcrRecognitionMode.korean;
+              return result.textForSource(oppositeSource).trim();
+            }
+
+            void applyOcrText(
+              OcrRecognitionResult result,
+              OcrRecognitionMode source,
+            ) {
+              final text = result.textForSource(source).trim();
+              pasteController.text = text;
+              pasteController.selection = TextSelection.collapsed(
+                offset: pasteController.text.length,
+              );
+              ocrTitleAlternatives = buildOcrTitleAlternatives(
+                primaryText: text,
+                alternateText: oppositeOcrText(result, source),
+              );
+            }
+
+            Future<bool> confirmReplacingText(String message) async {
+              final shouldReplace = await showDialog<bool>(
+                context: dialogContext,
+                builder: (confirmContext) {
+                  return AlertDialog(
+                    content: Text(message),
+                    actions: [
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.of(confirmContext).pop(false),
+                        child: const Text('\uCDE8\uC18C'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(confirmContext).pop(true),
+                        child: const Text('\uBC14\uAFB8\uAE30'),
+                      ),
+                    ],
+                  );
+                },
+              );
+              return shouldReplace == true;
+            }
+
+            OcrRecognitionMode sourceForPreferredResult(
+              OcrRecognitionResult result,
+              OcrRecognitionMode preferredSource,
+            ) {
+              final preferredText = result
+                  .textForSource(preferredSource)
+                  .trim();
+              if (preferredText.isNotEmpty) {
+                return preferredSource;
+              }
+              final fallbackSource =
+                  preferredSource == OcrRecognitionMode.korean
+                  ? OcrRecognitionMode.japanese
+                  : OcrRecognitionMode.korean;
+              return result.textForSource(fallbackSource).trim().isNotEmpty
+                  ? fallbackSource
+                  : preferredSource;
+            }
+
+            Future<void> importTextFromImage(
+              OcrRecognitionMode preferredSource,
+            ) async {
+              if (isOcrRunning) {
+                return;
+              }
+
+              if (!textOcrService.isSupported) {
+                _showRootSnackBar(
+                  '\uC774\uBBF8\uC9C0 \uAE00\uC790 \uC778\uC2DD\uC740 \uD604\uC7AC Android \uC571\uC5D0\uC11C\uB9CC \uC9C0\uC6D0\uD569\uB2C8\uB2E4.',
+                );
+                return;
+              }
+
+              refreshDialog(() {
+                isOcrRunning = true;
+              });
+
+              try {
+                final selectedImage = await imagePicker.pickImage(
+                  source: ImageSource.gallery,
+                );
+                if (selectedImage == null) {
+                  return;
+                }
+
+                final recognition = await textOcrService.recognizeText(
+                  selectedImage.path,
+                  mode: OcrRecognitionMode.auto,
+                );
+                final sourceToUse = sourceForPreferredResult(
+                  recognition,
+                  preferredSource,
+                );
+                if (recognition.textForSource(sourceToUse).trim().isEmpty) {
+                  _showRootSnackBar(
+                    '\uC774\uBBF8\uC9C0\uC5D0\uC11C \uAE00\uC790\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.',
+                  );
+                  return;
+                }
+
+                if (!dialogContext.mounted) {
+                  return;
+                }
+
+                if (pasteController.text.trim().isNotEmpty) {
+                  final shouldReplace = await confirmReplacingText(
+                    '\uC785\uB825 \uC911\uC778 \uB0B4\uC6A9\uC744 \uC774\uBBF8\uC9C0\uC5D0\uC11C \uC77D\uC740 \uD14D\uC2A4\uD2B8\uB85C \uBC14\uAFC0\uAE4C\uC694?',
+                  );
+                  if (!shouldReplace) {
+                    return;
+                  }
+                }
+
+                if (!dialogContext.mounted) {
+                  return;
+                }
+
+                refreshDialog(() {
+                  applyOcrText(recognition, sourceToUse);
+                });
+
+                hideKeyboardAndRevealAnalyzeButton();
+              } on OcrUnsupportedException {
+                _showRootSnackBar(
+                  '\uC774\uBBF8\uC9C0 \uAE00\uC790 \uC778\uC2DD\uC740 \uD604\uC7AC Android \uC571\uC5D0\uC11C\uB9CC \uC9C0\uC6D0\uD569\uB2C8\uB2E4.',
+                );
+              } catch (error, stackTrace) {
+                if (kDebugMode) {
+                  debugPrint('OCR failed: $error\n$stackTrace');
+                }
+                _showRootSnackBar(
+                  '\uC774\uBBF8\uC9C0\uB97C \uC77D\uB294 \uC911 \uBB38\uC81C\uAC00 \uBC1C\uC0DD\uD588\uC5B4\uC694.',
+                );
+              } finally {
+                if (dialogContext.mounted) {
+                  refreshDialog(() {
+                    isOcrRunning = false;
+                  });
+                } else {
+                  isOcrRunning = false;
+                }
+              }
             }
 
             final dialogMedia = MediaQuery.of(dialogContext);
@@ -2834,6 +2992,52 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
+                                  if (textOcrService.isSupported) ...[
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 6,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        OutlinedButton.icon(
+                                          onPressed: isOcrRunning
+                                              ? null
+                                              : () => importTextFromImage(
+                                                  OcrRecognitionMode.korean,
+                                                ),
+                                          icon: isOcrRunning
+                                              ? const SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                )
+                                              : const Icon(
+                                                  Icons.image_search_outlined,
+                                                ),
+                                          label: Text(
+                                            isOcrRunning
+                                                ? '\uC774\uBBF8\uC9C0\uC5D0\uC11C \uAE00\uC790\uB97C \uC77D\uB294 \uC911\uC774\uC5D0\uC694.'
+                                                : '\uC774\uBBF8\uC9C0\uC5D0\uC11C \uBD88\uB7EC\uC624\uAE30',
+                                          ),
+                                        ),
+                                        TextButton.icon(
+                                          onPressed: isOcrRunning
+                                              ? null
+                                              : () => importTextFromImage(
+                                                  OcrRecognitionMode.japanese,
+                                                ),
+                                          icon: const Icon(Icons.translate),
+                                          label: const Text(
+                                            '\uC77C\uBCF8\uC5B4\uB85C \uBD88\uB7EC\uC624\uAE30',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
                                   OutlinedButton(
                                     onPressed: () {
                                       FocusManager.instance.primaryFocus
@@ -2845,6 +3049,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                       );
                                       _showPasteSongAnalysisDialog(
                                         analysis,
+                                        titleAlternatives: ocrTitleAlternatives,
                                         onSongsAdded: () {
                                           onSongsAdded?.call();
                                           pasteController.clear();
@@ -2886,11 +3091,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   void _showPasteSongAnalysisDialog(
     PasteSongAnalysis analysis, {
+    List<String?> titleAlternatives = const [],
     VoidCallback? onSongsAdded,
   }) {
     final inferredArtistController = TextEditingController(
       text: analysis.inferredArtist,
     );
+    final drafts = analysis.drafts.toList();
     final excludedIndexes = <int>{};
 
     showDialog<void>(
@@ -2899,7 +3106,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
         return StatefulBuilder(
           builder: (context, refreshDialog) {
             final candidates = buildPasteSongCandidates(
-              drafts: analysis.drafts,
+              drafts: drafts,
               inferredArtist: inferredArtistController.text,
               existingSongs: _songs,
             );
@@ -2930,6 +3137,211 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       !excludedIndexes.contains(entry.key),
                 )
                 .length;
+            String currentCandidateTitle(
+              int index,
+              PasteSongCandidate candidate,
+            ) {
+              final draft = drafts[index];
+              return (candidate.song?.title ??
+                      draft.title ??
+                      candidate.sourceLine)
+                  .trim();
+            }
+
+            String? alternateTitleFor(int index, PasteSongCandidate candidate) {
+              if (index >= titleAlternatives.length) {
+                return null;
+              }
+              final alternateTitle = titleAlternatives[index]?.trim();
+              if (alternateTitle == null || alternateTitle.isEmpty) {
+                return null;
+              }
+              if (alternateTitle == currentCandidateTitle(index, candidate)) {
+                return null;
+              }
+              return alternateTitle;
+            }
+
+            void applyCandidateTitleEdit(
+              int index,
+              PasteSongCandidate candidate,
+              String title,
+            ) {
+              final draft = drafts[index];
+              final hasOwnArtist = (draft.artist ?? '').trim().isNotEmpty;
+              drafts[index] = PasteSongDraft(
+                sourceLine: draft.sourceLine,
+                artist: draft.artist ?? candidate.song?.artist,
+                title: title.trim(),
+                usesInferredArtist:
+                    draft.usesInferredArtist ||
+                    (!hasOwnArtist &&
+                        inferredArtistController.text.trim().isNotEmpty),
+                needsReview: false,
+              );
+            }
+
+            Future<String?> showDirectTitleEditDialog(
+              int index,
+              PasteSongCandidate candidate,
+            ) async {
+              final controller = TextEditingController(
+                text: currentCandidateTitle(index, candidate),
+              );
+              String? errorText;
+
+              final editedTitle = await showDialog<String>(
+                context: analysisContext,
+                builder: (editContext) {
+                  return StatefulBuilder(
+                    builder: (context, refreshEditDialog) {
+                      return AlertDialog(
+                        title: const Text(
+                          '\uACE1\uBA85 \uC9C1\uC811 \uC218\uC815',
+                        ),
+                        content: TextField(
+                          controller: controller,
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            labelText: '\uACE1\uBA85',
+                            border: const OutlineInputBorder(),
+                            errorText: errorText,
+                          ),
+                          onSubmitted: (_) {
+                            final value = controller.text.trim();
+                            if (value.isEmpty) {
+                              refreshEditDialog(() {
+                                errorText =
+                                    '\uACE1\uBA85\uC744 \uC785\uB825\uD574 \uC8FC\uC138\uC694.';
+                              });
+                              return;
+                            }
+                            Navigator.of(editContext).pop(value);
+                          },
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(editContext).pop(),
+                            child: const Text('\uCDE8\uC18C'),
+                          ),
+                          FilledButton(
+                            onPressed: () {
+                              final value = controller.text.trim();
+                              if (value.isEmpty) {
+                                refreshEditDialog(() {
+                                  errorText =
+                                      '\uACE1\uBA85\uC744 \uC785\uB825\uD574 \uC8FC\uC138\uC694.';
+                                });
+                                return;
+                              }
+                              Navigator.of(editContext).pop(value);
+                            },
+                            child: const Text('\uC218\uC815'),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              );
+              _disposeTextControllerAfterRoute(controller);
+              return editedTitle;
+            }
+
+            Future<String?> showAutoTitleEditDialog(String alternateTitle) {
+              return showDialog<String>(
+                context: analysisContext,
+                builder: (autoContext) {
+                  return AlertDialog(
+                    title: const Text('\uACE1\uBA85 \uC218\uC815'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '\uB2E4\uB978 \uC778\uC2DD \uACB0\uACFC',
+                          style: TextStyle(
+                            color: tdmTextSub,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SelectableText(alternateTitle),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(autoContext).pop(),
+                        child: const Text('\uCDE8\uC18C'),
+                      ),
+                      FilledButton(
+                        onPressed: () =>
+                            Navigator.of(autoContext).pop(alternateTitle),
+                        child: const Text('\uC801\uC6A9'),
+                      ),
+                    ],
+                  );
+                },
+              );
+            }
+
+            Future<void> editCandidateTitle(
+              int index,
+              PasteSongCandidate candidate,
+            ) async {
+              final alternateTitle = alternateTitleFor(index, candidate);
+              final action = await showDialog<String>(
+                context: analysisContext,
+                builder: (choiceContext) {
+                  return AlertDialog(
+                    title: const Text('\uACE1\uBA85 \uC218\uC815'),
+                    content: alternateTitle == null
+                        ? const Text(
+                            '\uC790\uB3D9\uC73C\uB85C \uC218\uC815\uD560 \uD6C4\uBCF4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.',
+                          )
+                        : null,
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(choiceContext).pop(),
+                        child: const Text('\uCDE8\uC18C'),
+                      ),
+                      if (alternateTitle != null)
+                        TextButton(
+                          onPressed: () =>
+                              Navigator.of(choiceContext).pop('auto'),
+                          child: const Text('\uC790\uB3D9 \uC218\uC815'),
+                        ),
+                      FilledButton(
+                        onPressed: () =>
+                            Navigator.of(choiceContext).pop('manual'),
+                        child: const Text('\uC9C1\uC811 \uC218\uC815'),
+                      ),
+                    ],
+                  );
+                },
+              );
+
+              if (action == null) {
+                return;
+              }
+
+              String? editedTitle;
+              if (action == 'auto' && alternateTitle != null) {
+                editedTitle = await showAutoTitleEditDialog(alternateTitle);
+              } else {
+                editedTitle = await showDirectTitleEditDialog(index, candidate);
+              }
+
+              if (editedTitle == null || editedTitle.trim().isEmpty) {
+                return;
+              }
+
+              refreshDialog(() {
+                applyCandidateTitleEdit(index, candidate, editedTitle!);
+              });
+            }
+
             final dialogMedia = MediaQuery.of(analysisContext);
             final maxDialogHeight = max(
               320.0,
@@ -2968,6 +3380,15 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         color: tdmTextSub,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      '\uACE1\uBA85\uC774\uB098 \uC5F0\uD544 \uC544\uC774\uCF58\uC744 \uB204\uB974\uBA74 \uC218\uC815\uD560 \uC218 \uC788\uC5B4\uC694.',
+                      style: TextStyle(
+                        color: tdmTextSub,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -3017,12 +3438,40 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                         : null,
                                     visualDensity: VisualDensity.compact,
                                   ),
-                                  title: Text(
-                                    song == null
-                                        ? candidate.sourceLine
-                                        : '${song.artist} - ${song.title}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                  title: InkWell(
+                                    onTap: () =>
+                                        editCandidateTitle(index, candidate),
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 4,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              song == null
+                                                  ? candidate.sourceLine
+                                                  : '${song.artist} - ${song.title}',
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Tooltip(
+                                            message:
+                                                '\uACE1\uBA85 \uC218\uC815',
+                                            child: Icon(
+                                              Icons.edit_outlined,
+                                              size: 16,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                   trailing: Text(
                                     candidate.statusLabel,
