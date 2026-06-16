@@ -31,6 +31,8 @@ const Color tdmBorder = Color(0xFFB7E8E1);
 const Color tdmLinkBlue = Color(0xFF3A8FC3);
 const int maxSongSetCount = 30;
 
+enum AddSongTab { individual, paste }
+
 class SongStorage {
   static const String _songsKey = 'tdm_alpha_songs';
   static const String _songSetsKey = 'tdm_song_sets';
@@ -39,6 +41,7 @@ class SongStorage {
   static const String _samplePromptCheckedKey = 'sample_prompt_checked';
   static const String _defaultShareMessageKey = 'tdm_default_share_message';
   static const String _disabledRandomArtistsKey = 'tdm_disabled_random_artists';
+  static const String _lastAddSongTabKey = 'tdm_last_add_song_tab';
 
   static Future<List<Song>?> loadSongs() async {
     try {
@@ -216,6 +219,26 @@ class SongStorage {
       );
     } catch (_) {
       // Filter persistence should never crash the app.
+    }
+  }
+
+  static Future<AddSongTab> loadLastAddSongTab() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return preferences.getString(_lastAddSongTabKey) == AddSongTab.paste.name
+          ? AddSongTab.paste
+          : AddSongTab.individual;
+    } catch (_) {
+      return AddSongTab.individual;
+    }
+  }
+
+  static Future<void> saveLastAddSongTab(AddSongTab tab) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(_lastAddSongTabKey, tab.name);
+    } catch (_) {
+      // Add-song tab persistence should never crash the app.
     }
   }
 }
@@ -443,6 +466,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   List<SongSet> _songSets = [];
   RandomMode _randomMode = RandomMode.artistRandom;
   List<String> _selectedSongSetIds = [];
+  AddSongTab _lastAddSongTab = AddSongTab.individual;
 
   @override
   void initState() {
@@ -465,6 +489,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final disabledRandomArtists = await SongStorage.loadDisabledRandomArtists();
     final samplePromptChecked = await SongStorage.isSamplePromptChecked();
     final defaultShareMessage = await SongStorage.loadDefaultShareMessage();
+    final lastAddSongTab = await SongStorage.loadLastAddSongTab();
 
     if (!mounted) {
       return;
@@ -491,6 +516,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _isSponsorPick = false;
       _resultSongSetName = null;
       _defaultShareMessage = defaultShareMessage;
+      _lastAddSongTab = lastAddSongTab;
       _includeTodayTag = true;
       _shareTextController.clear();
     });
@@ -2721,8 +2747,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
               520.0,
             );
 
+            final initialTabIndex = _lastAddSongTab == AddSongTab.paste ? 1 : 0;
+
             return DefaultTabController(
               length: 2,
+              initialIndex: initialTabIndex,
               child: AlertDialog(
                 title: const Text('\uACE1 \uCD94\uAC00'),
                 insetPadding: const EdgeInsets.symmetric(
@@ -2738,73 +2767,24 @@ class _TodaySongPageState extends State<TodaySongPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const TabBar(
+                      TabBar(
+                        onTap: (index) {
+                          final tab = index == 1
+                              ? AddSongTab.paste
+                              : AddSongTab.individual;
+                          _lastAddSongTab = tab;
+                          SongStorage.saveLastAddSongTab(tab);
+                        },
                         tabs: [
-                          Tab(text: '\uBD99\uC5EC\uB123\uAE30'),
                           Tab(text: '\uAC1C\uBCC4 \uACE1 \uCD94\uAC00'),
+                          Tab(text: '\uBD99\uC5EC\uB123\uAE30'),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Expanded(
                         child: TabBarView(
+                          physics: const NeverScrollableScrollPhysics(),
                           children: [
-                            SingleChildScrollView(
-                              controller: pasteScrollController,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  const Text(
-                                    '\uBCF5\uC0AC\uD55C \uACE1 \uBAA9\uB85D\uC744 \uBD99\uC5EC\uB123\uC73C\uBA74 \uAC00\uC218/\uACE1\uBA85\uC744 \uC790\uB3D9\uC73C\uB85C \uCD94\uC815\uD569\uB2C8\uB2E4.',
-                                    style: TextStyle(
-                                      color: tdmTextSub,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  TextField(
-                                    controller: pasteController,
-                                    minLines: 3,
-                                    maxLines: 4,
-                                    textInputAction: TextInputAction.done,
-                                    onEditingComplete:
-                                        hideKeyboardAndRevealAnalyzeButton,
-                                    keyboardType: TextInputType.multiline,
-                                    decoration: InputDecoration(
-                                      border: const OutlineInputBorder(),
-                                      hintText:
-                                          '\uC608\uC2DC)\nN.Flying - \uD658\uC808\uAE30\n1. Blue Moon',
-                                      hintStyle: TextStyle(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant
-                                            .withValues(alpha: 0.48),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  OutlinedButton(
-                                    onPressed: () {
-                                      FocusManager.instance.primaryFocus
-                                          ?.unfocus();
-                                      final analysis = _analyzePastedSongs(
-                                        pasteController.text,
-                                      );
-                                      _showPasteSongAnalysisDialog(
-                                        analysis,
-                                        onSongsAdded: () {
-                                          onSongsAdded?.call();
-                                          pasteController.clear();
-                                        },
-                                      );
-                                    },
-                                    child: const Text(
-                                      '\uBD84\uC11D\uD558\uAE30',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                             SingleChildScrollView(
                               child: Column(
                                 children: [
@@ -2869,6 +2849,63 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                       child: const Text(
                                         '\uCD94\uAC00\uD558\uAE30',
                                       ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SingleChildScrollView(
+                              controller: pasteScrollController,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const Text(
+                                    '\uBCF5\uC0AC\uD55C \uACE1 \uBAA9\uB85D\uC744 \uBD99\uC5EC\uB123\uC73C\uBA74 \uAC00\uC218/\uACE1\uBA85\uC744 \uC790\uB3D9\uC73C\uB85C \uCD94\uC815\uD569\uB2C8\uB2E4.',
+                                    style: TextStyle(
+                                      color: tdmTextSub,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: pasteController,
+                                    minLines: 3,
+                                    maxLines: 4,
+                                    textInputAction: TextInputAction.done,
+                                    onEditingComplete:
+                                        hideKeyboardAndRevealAnalyzeButton,
+                                    keyboardType: TextInputType.multiline,
+                                    decoration: InputDecoration(
+                                      border: const OutlineInputBorder(),
+                                      hintText:
+                                          '\uC608\uC2DC)\nN.Flying - \uD658\uC808\uAE30\n1. Blue Moon',
+                                      hintStyle: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant
+                                            .withValues(alpha: 0.48),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton(
+                                    onPressed: () {
+                                      FocusManager.instance.primaryFocus
+                                          ?.unfocus();
+                                      final analysis = _analyzePastedSongs(
+                                        pasteController.text,
+                                      );
+                                      _showPasteSongAnalysisDialog(
+                                        analysis,
+                                        onSongsAdded: () {
+                                          onSongsAdded?.call();
+                                          pasteController.clear();
+                                        },
+                                      );
+                                    },
+                                    child: const Text(
+                                      '\uBD84\uC11D\uD558\uAE30',
                                     ),
                                   ),
                                 ],
@@ -3312,7 +3349,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
     var line = rawLine.trim().replaceAll(RegExp(r'\s+'), ' ');
     line = line.replaceFirst(RegExp(r'^#\d+\s+(?=.*\s(?:-|–|—|/)\s)'), '');
     line = line.replaceFirst(RegExp(r'^[+\-*•]\s*'), '');
-    line = line.replaceFirst(RegExp(r'^\d+(?:[\.\)]\s*|\s+)'), '');
+    line = line.replaceFirst(
+      RegExp('^\\d+\\s*(?:[.)\\uFF0E]\\s*|[-:]\\s+)'),
+      '',
+    );
     line = line.replaceFirst(RegExp(r'^[+\-*•]\s*'), '');
     return line
         .replaceAll(RegExp(r'''["“”‘’]'''), '')
