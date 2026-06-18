@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'song.dart';
 
@@ -62,6 +63,8 @@ class _ExplicitSetlistHeader {
   const _ExplicitSetlistHeader({required this.index, required this.artist});
 }
 
+enum _PasteTableSection { none, number, name, album, ended }
+
 const String _kSetlist = '\uC14B\uB9AC\uC2A4\uD2B8';
 const String _kConcert = '\uACF5\uC5F0';
 const String _kConcertKo = '\uCF58\uC11C\uD2B8';
@@ -103,24 +106,43 @@ class _PasteSongParser {
   });
 
   PasteSongAnalysis parse(String text) {
-    final mergedLines = _mergeNumberOnlyLines(
+    final originalLines = _mergeNumberOnlyLines(
       const LineSplitter().convert(text),
     );
-    final explicitSetlistHeader = _findExplicitSetlistHeader(mergedLines);
+    final isStructuredTable = _isStructuredTable(originalLines);
+    final explicitSetlistHeader = _findExplicitSetlistHeader(originalLines);
+    final concertArtistHeader =
+        explicitSetlistHeader == null && !isStructuredTable
+        ? _findConcertArtistHeader(originalLines)
+        : null;
+    final tableLogoArtist = isStructuredTable
+        ? _artistFromStructuredTableEvidence(originalLines)
+        : '';
     final inferredArtist =
-        explicitSetlistHeader?.artist ?? _inferPastedArtist(text);
+        explicitSetlistHeader?.artist ??
+        (tableLogoArtist.isNotEmpty ? tableLogoArtist : null) ??
+        concertArtistHeader?.artist ??
+        _inferPastedArtist(text);
+    var contentStartIndex = 0;
+    if (explicitSetlistHeader != null) {
+      contentStartIndex = explicitSetlistHeader.index + 1;
+    } else if (concertArtistHeader != null) {
+      final followingSetlistIndex = _findFollowingSetlistMarkerIndex(
+        originalLines,
+        concertArtistHeader.index + 1,
+      );
+      contentStartIndex =
+          (followingSetlistIndex ?? concertArtistHeader.index) + 1;
+    }
+    final linesAfterHeader = originalLines.skip(contentStartIndex).toList();
+    final mergedLines = _filterStructuredTableLines(linesAfterHeader);
+    final stripOcrNumberNoise = _hasRepeatedOcrNumberNoise(mergedLines);
     final drafts = <PasteSongDraft>[];
     var lineIndex = 0;
 
     for (final rawLine in mergedLines) {
       final rawTrimmedLine = rawLine.trim();
       if (rawTrimmedLine.isEmpty) {
-        lineIndex++;
-        continue;
-      }
-
-      if (explicitSetlistHeader != null &&
-          lineIndex <= explicitSetlistHeader.index) {
         lineIndex++;
         continue;
       }
@@ -132,6 +154,7 @@ class _PasteSongParser {
         lineIndex,
         totalLineCount: mergedLines.length,
         isNumberedSongLine: hasListNumber,
+        isStructuredTableSongLine: isStructuredTable,
       )) {
         lineIndex++;
         continue;
@@ -140,7 +163,10 @@ class _PasteSongParser {
       final isNumberedArtistTitleLine = _isHashNumberedArtistTitleLine(
         rawTrimmedLine,
       );
-      final cleanedLine = _cleanPastedSongLine(rawLine);
+      final cleanedLine = _cleanPastedSongLine(
+        rawLine,
+        stripOcrNumberNoise: stripOcrNumberNoise,
+      );
       if (cleanedLine.isEmpty) {
         lineIndex++;
         continue;
@@ -152,6 +178,7 @@ class _PasteSongParser {
         lineIndex,
         totalLineCount: mergedLines.length,
         isNumberedSongLine: hasListNumber,
+        isStructuredTableSongLine: isStructuredTable,
       )) {
         lineIndex++;
         continue;
@@ -264,8 +291,27 @@ class _PasteSongParser {
       return explicitHeader.artist;
     }
 
-    if (lines.any(_isStandaloneSetlistLine)) {
+    final isStructuredTable = _isStructuredTable(lines);
+    if (isStructuredTable) {
+      final tableLogoArtist = _artistFromStructuredTableEvidence(lines);
+      if (tableLogoArtist.isNotEmpty) {
+        return tableLogoArtist;
+      }
       return '';
+    }
+
+    if (!isStructuredTable) {
+      for (final line in lines) {
+        final concertArtist = _artistFromConcertKeywordHeader(line);
+        if (concertArtist.isNotEmpty) {
+          return concertArtist;
+        }
+      }
+    }
+
+    final logoArtist = _artistFromTrailingLogo(lines);
+    if (logoArtist.isNotEmpty) {
+      return logoArtist;
     }
 
     final topLines = lines.take(5).toList();
@@ -312,6 +358,10 @@ class _PasteSongParser {
       }
     }
 
+    if (lines.any(_isStandaloneSetlistLine)) {
+      return '';
+    }
+
     return '';
   }
 
@@ -323,6 +373,32 @@ class _PasteSongParser {
       }
     }
     return null;
+  }
+
+  _ExplicitSetlistHeader? _findConcertArtistHeader(List<String> lines) {
+    for (var index = 0; index < lines.length; index++) {
+      final artist = _artistFromConcertKeywordHeader(lines[index]);
+      if (artist.isNotEmpty) {
+        return _ExplicitSetlistHeader(index: index, artist: artist);
+      }
+    }
+    return null;
+  }
+
+  int? _findFollowingSetlistMarkerIndex(List<String> lines, int startIndex) {
+    for (var index = startIndex; index < lines.length; index++) {
+      if (_containsSetlistMarker(lines[index])) {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  bool _containsSetlistMarker(String line) {
+    return RegExp(
+      r'(?:\uC14B\uB9AC\uC2A4\uD2B8|set\s*list)',
+      caseSensitive: false,
+    ).hasMatch(line);
   }
 
   Song? _parsePastedSongLine(
@@ -417,11 +493,18 @@ class _PasteSongParser {
     return line;
   }
 
-  String _cleanPastedSongLine(String rawLine) {
+  String _cleanPastedSongLine(
+    String rawLine, {
+    bool stripOcrNumberNoise = false,
+  }) {
     var line = rawLine.trim().replaceAll(RegExp(r'\s+'), ' ');
     line = line.replaceFirst(RegExp(r'^#\d+\s+(?=.*\s(?:-|–|—|/)\s)'), '');
     line = line.replaceFirst(RegExp(r'^[+\-*•]\s*'), '');
     line = line.replaceFirst(RegExp(r'^\d+\s*(?:[.)\uFF0E]\s*|[-:]\s*)'), '');
+    line = line.replaceFirst(RegExp(r'^[①-⑳]\s*'), '');
+    if (stripOcrNumberNoise && !_looksLikeNumericSongTitle(line)) {
+      line = line.replaceFirst(RegExp(r'^(?:[O0@]|\d{1,2})\s+(?=\S)'), '');
+    }
     line = _stripPerformanceSuffix(line);
     line = _unwrapWholeLineParentheses(line);
     line = line.replaceFirst(RegExp(r'^[+\-*•]\s*'), '');
@@ -429,6 +512,13 @@ class _PasteSongParser {
         .replaceAll(RegExp(r'''["“”‘’]'''), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  bool _looksLikeNumericSongTitle(String value) {
+    return RegExp(
+      r'^\d+\s*(?:\uBD84|\uC2DC\uAC04|\uC6D4|days?\b|years?\b)',
+      caseSensitive: false,
+    ).hasMatch(value.trim());
   }
 
   bool _isHashNumberedArtistTitleLine(String line) {
@@ -608,6 +698,11 @@ class _PasteSongParser {
 
   String _artistFromConcertKeywordHeader(String line) {
     final cleaned = _cleanArtistCandidate(line);
+    final knownArtist = _knownArtistContainedIn(cleaned);
+    if (knownArtist.isNotEmpty && _containsConcertArtistMarker(cleaned)) {
+      return knownArtist;
+    }
+
     final withoutSetlist = cleaned
         .replaceAll(RegExp('$_kSetlist|setlist', caseSensitive: false), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
@@ -616,6 +711,10 @@ class _PasteSongParser {
     const englishKeywords = [
       'SNIPPET CONCERT',
       'BUSKING CONCERT',
+      'ARENA TOUR',
+      'HALL TOUR',
+      'SHOWCASE',
+      'TOUR',
       'CONCERT',
       'LIVE',
       'STAGE',
@@ -634,6 +733,10 @@ class _PasteSongParser {
       );
       if (_looksLikeArtistCandidate(before)) {
         return before;
+      }
+
+      if (keyword == 'LIVE') {
+        continue;
       }
 
       final after = _cleanDecoratedEventArtistCandidate(
@@ -659,6 +762,9 @@ class _PasteSongParser {
       if (index < 0) {
         continue;
       }
+      if (keyword == '\uD398\uC2A4\uD2F0\uBC8C' && knownArtist.isEmpty) {
+        continue;
+      }
 
       final before = _cleanDecoratedEventArtistCandidate(
         withoutSetlist.substring(0, index),
@@ -678,6 +784,34 @@ class _PasteSongParser {
     return '';
   }
 
+  bool _containsConcertArtistMarker(String value) {
+    final lower = value.toLowerCase();
+    return lower.contains('concert') ||
+        lower.contains('live') ||
+        lower.contains('tour') ||
+        lower.contains('showcase') ||
+        value.contains(_kConcert) ||
+        value.contains(_kConcertKo) ||
+        value.contains(_kLiveKo);
+  }
+
+  String _knownArtistContainedIn(String value) {
+    final lowerValue = value.toLowerCase();
+    final artists =
+        {
+            ...existingSongs.map((song) => song.artist),
+            ...knownSongs.map((song) => song.artist),
+          }.where((artist) => artist.trim().length >= 2).toList()
+          ..sort((left, right) => right.length.compareTo(left.length));
+
+    for (final artist in artists) {
+      if (lowerValue.contains(artist.trim().toLowerCase())) {
+        return artist.trim();
+      }
+    }
+    return '';
+  }
+
   String _cleanDecoratedEventArtistCandidate(String value) {
     var candidate = _cleanArtistCandidate(value);
     candidate = candidate
@@ -694,6 +828,12 @@ class _PasteSongParser {
           ),
           ' ',
         )
+        .replaceAll(
+          RegExp(
+            r'(?:\uC18C\uADF9\uC7A5|\uACF5\uC5F0\uC7A5|\uCCB4\uC721\uAD00)',
+          ),
+          ' ',
+        )
         .replaceAll(RegExp(r'[_\-–—:/,]+'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
@@ -703,7 +843,9 @@ class _PasteSongParser {
 
   bool _looksLikeDecoratedEventArtistCandidate(String value) {
     final candidate = value.trim();
-    if (!_looksLikeArtistCandidate(candidate)) {
+    if (!_looksLikeArtistCandidate(candidate) ||
+        _containsInstitutionOrEventOnlyKeyword(candidate) ||
+        _isWeekdayOrPerformanceRound(candidate)) {
       return false;
     }
 
@@ -730,18 +872,204 @@ class _PasteSongParser {
     return RegExp(r'[A-Za-z가-힣ぁ-んァ-ヶ一-龯々]').hasMatch(candidate);
   }
 
+  String _artistFromTrailingLogo(List<String> lines) {
+    final meaningful = lines
+        .asMap()
+        .entries
+        .where((entry) => entry.value.trim().isNotEmpty)
+        .toList();
+    if (meaningful.isEmpty) {
+      return '';
+    }
+
+    final tail = meaningful.skip(max(0, meaningful.length - 6)).toList();
+    final logoCandidates = tail
+        .map((entry) => _cleanArtistCandidate(entry.value))
+        .where(_looksLikeLogoArtistToken)
+        .toList();
+
+    for (var index = 0; index < logoCandidates.length - 1; index++) {
+      final first = _normalizeLogoToken(logoCandidates[index]);
+      final second = _normalizeLogoToken(logoCandidates[index + 1]);
+      if (first.length >= 2 &&
+          second.length >= 4 &&
+          (second.startsWith(first) || first.startsWith(second))) {
+        return logoCandidates[index + 1];
+      }
+    }
+
+    for (final candidate in logoCandidates.reversed) {
+      final knownArtist = _knownArtistContainedIn(candidate);
+      if (knownArtist.isNotEmpty &&
+          _normalizeLogoToken(candidate).length >= 4) {
+        return knownArtist;
+      }
+
+      final normalized = _normalizeLogoToken(candidate);
+      if (normalized.length >= 3 &&
+          lines.any(
+            (line) =>
+                _normalizeLogoToken(line).startsWith(normalized) &&
+                _normalizeLogoToken(line).length > normalized.length,
+          )) {
+        return candidate;
+      }
+    }
+
+    final allLogoCandidates = meaningful
+        .map((entry) => _cleanArtistCandidate(entry.value))
+        .where(_looksLikeLogoArtistToken)
+        .toList();
+    for (final candidate in allLogoCandidates.reversed) {
+      final normalized = _normalizeLogoToken(candidate);
+      if (normalized.length < 3 || normalized.length > 8) {
+        continue;
+      }
+      final hasSupportingBrand = lines.any((line) {
+        final lineToken = _normalizeLogoToken(
+          line.replaceFirst(RegExp(r'^\s*\d{4}\s*'), ''),
+        );
+        return lineToken.length > normalized.length &&
+            lineToken.startsWith(normalized) &&
+            lineToken.length <= normalized.length + 8;
+      });
+      if (hasSupportingBrand) {
+        return candidate;
+      }
+    }
+
+    return '';
+  }
+
+  String _artistFromStructuredTableEvidence(List<String> lines) {
+    final outsideLines = <String>[];
+    final possibleLogoLines = <String>[];
+    var section = _PasteTableSection.none;
+    var hasEnteredTable = false;
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      final header = trimmed.toLowerCase();
+      if (header == 'num') {
+        hasEnteredTable = true;
+        section = _PasteTableSection.number;
+        continue;
+      }
+      if (header == 'name') {
+        hasEnteredTable = true;
+        section = _PasteTableSection.name;
+        continue;
+      }
+      if (header == 'album') {
+        hasEnteredTable = true;
+        section = _PasteTableSection.album;
+        continue;
+      }
+      if (header == 'end' || header.startsWith('total')) {
+        section = _PasteTableSection.ended;
+        continue;
+      }
+
+      if (!hasEnteredTable || section == _PasteTableSection.none) {
+        outsideLines.add(line);
+        continue;
+      }
+
+      if (section == _PasteTableSection.number &&
+          RegExp(r'^\d{4}\s+\S').hasMatch(trimmed)) {
+        outsideLines.add(line);
+        continue;
+      }
+
+      if (int.tryParse(trimmed) == null &&
+          _looksLikeLogoArtistToken(_cleanArtistCandidate(trimmed))) {
+        possibleLogoLines.add(line);
+      }
+      if (section == _PasteTableSection.ended &&
+          !_isDateOrStructuredInfoLine(trimmed) &&
+          !_isStandalonePerformanceMetaLine(trimmed)) {
+        outsideLines.add(line);
+      }
+    }
+
+    for (final line in outsideLines) {
+      final artist = _artistFromConcertKeywordHeader(line);
+      if (artist.isNotEmpty) {
+        return artist;
+      }
+    }
+
+    final brandSupported = _artistFromBrandSupportedLogo(
+      outsideLines,
+      possibleLogoLines,
+    );
+    if (brandSupported.isNotEmpty) {
+      return brandSupported;
+    }
+
+    return _artistFromTrailingLogo(outsideLines);
+  }
+
+  String _artistFromBrandSupportedLogo(
+    List<String> brandLines,
+    List<String> logoLines,
+  ) {
+    for (final line in logoLines.reversed) {
+      final candidate = _cleanArtistCandidate(line);
+      final normalized = _normalizeLogoToken(candidate);
+      if (normalized.length < 2 || normalized.length > 8) {
+        continue;
+      }
+      final hasSupportingBrand = brandLines.any((brandLine) {
+        final brand = _normalizeLogoToken(
+          brandLine.replaceFirst(RegExp(r'^\s*\d{4}\s*'), ''),
+        );
+        return brand.length > normalized.length &&
+            brand.startsWith(normalized) &&
+            brand.length <= normalized.length + 8;
+      });
+      if (hasSupportingBrand) {
+        return candidate;
+      }
+    }
+    return '';
+  }
+
+  bool _looksLikeLogoArtistToken(String value) {
+    final candidate = value.trim();
+    if (candidate.isEmpty ||
+        candidate.contains(RegExp(r'\s')) ||
+        candidate.length > 20 ||
+        _containsInstitutionOrEventOnlyKeyword(candidate) ||
+        _isStandalonePerformanceMetaLine(candidate)) {
+      return false;
+    }
+    return RegExp(r'^[A-Za-z가-힣][A-Za-z0-9가-힣._-]*$').hasMatch(candidate);
+  }
+
+  String _normalizeLogoToken(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9가-힣]'), '');
+  }
+
   bool _isPastedMetaLine(
     String line,
     String inferredArtist,
     int lineIndex, {
     int? totalLineCount,
     bool isNumberedSongLine = false,
+    bool isStructuredTableSongLine = false,
   }) {
     if (RegExp(r'^[=\-–—_\s]+$').hasMatch(line)) {
       return true;
     }
 
     if (_isTdmSharedListMetaLine(line)) {
+      return true;
+    }
+
+    if (_isDateOrStructuredInfoLine(line) ||
+        _isTableOrReceiptHeader(line) ||
+        _isNarrativeNoiseLine(line)) {
       return true;
     }
 
@@ -753,8 +1081,27 @@ class _PasteSongParser {
       return true;
     }
 
+    if (_isTrailingArtistLogoLine(
+      line,
+      inferredArtist,
+      lineIndex,
+      totalLineCount,
+    )) {
+      return true;
+    }
+
+    if (!isNumberedSongLine &&
+        (_containsInstitutionOrEventOnlyKeyword(line) ||
+            RegExp(r'^\d{1,3}$').hasMatch(line.trim()))) {
+      return true;
+    }
+
     if (_isNoisyOcrMetaFragment(line)) {
       return true;
+    }
+
+    if (isStructuredTableSongLine) {
+      return false;
     }
 
     final emojiStrippedLine = _cleanArtistCandidate(line);
@@ -803,8 +1150,11 @@ class _PasteSongParser {
   }
 
   bool _isStandaloneSetlistLine(String line) {
-    final normalized = line.trim().toLowerCase();
-    return normalized == 'setlist' || line.trim() == _kSetlist;
+    final normalized = line.trim().toLowerCase().replaceAll(
+      RegExp(r'[\s._\-\[\]<>《》]+'),
+      '',
+    );
+    return normalized == 'setlist' || normalized == _kSetlist;
   }
 
   bool _isStandalonePerformanceMetaLine(String line) {
@@ -813,10 +1163,195 @@ class _PasteSongParser {
         normalized == 'm.c.' ||
         normalized == 'stage' ||
         normalized == 'plaintext' ||
+        normalized == 'openingvcr' ||
+        normalized == 'opningvcr' ||
+        normalized == 'ment' ||
+        normalized == 'bandtime' ||
+        normalized == 'dancertime' ||
+        normalized == 're-encore' ||
+        normalized == 'reencore' ||
+        normalized == 'onandon' ||
+        normalized == 'on:andon' ||
         normalized == 'ai\uB85C\uC0DD\uC131\uD55C\uCF58\uD150\uCE20' ||
         normalized == 'a\uB85C\uC0DD\uC131\uD55C\uCF58\uD150\uCE20' ||
         RegExp(r'^\uC575\uCF5C\d*$').hasMatch(normalized) ||
         RegExp(r'^encore\d*$').hasMatch(normalized);
+  }
+
+  bool _isDateOrStructuredInfoLine(String line) {
+    final trimmed = line.trim();
+    final lower = trimmed.toLowerCase();
+    if (RegExp(
+      r'^\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}(?:\s*[.]|\s*.*)?$',
+    ).hasMatch(trimmed)) {
+      return true;
+    }
+    if (RegExp(
+      r'^\d{4}\s*[.]\s*\d{1,2}\s*[.]\s*\d{1,2}\s*[.]?\s*-\s*\d{4}',
+    ).hasMatch(trimmed)) {
+      return true;
+    }
+    return RegExp(
+      r'^(?:date|address|total|end)\b',
+      caseSensitive: false,
+    ).hasMatch(lower);
+  }
+
+  bool _isTableOrReceiptHeader(String line) {
+    final normalized = line.trim().toLowerCase();
+    return {'num', 'date', 'address', 'total', 'end'}.contains(normalized);
+  }
+
+  bool _isNarrativeNoiseLine(String line) {
+    final trimmed = line.trim();
+    if (trimmed.length < 45) {
+      return false;
+    }
+    final punctuationCount = RegExp(r'[.!?。！？]').allMatches(trimmed).length;
+    final koreanSentenceEnding = RegExp(
+      r'(?:\uC694|\uB2E4|\uC2B5\uB2C8\uB2E4|\uD574\uC694)[.!?]?$',
+    ).hasMatch(trimmed);
+    return punctuationCount >= 2 || koreanSentenceEnding;
+  }
+
+  bool _hasRepeatedOcrNumberNoise(List<String> lines) {
+    var matches = 0;
+    for (final line in lines) {
+      if (RegExp(r'^(?:[O0@]|\d{1,2})\s+\S').hasMatch(line.trim())) {
+        matches++;
+      }
+    }
+    return matches >= 2;
+  }
+
+  List<String> _filterStructuredTableLines(List<String> lines) {
+    if (!_isStructuredTable(lines)) {
+      return lines;
+    }
+
+    final filtered = <String>[];
+    var section = _PasteTableSection.none;
+    final sectionNumbers = <int>[];
+    var expectedSongCount = 0;
+    var collectedSongCount = 0;
+    for (final line in lines) {
+      final trimmed = line.trim();
+      final header = trimmed.toLowerCase();
+      if (header == 'num') {
+        section = _PasteTableSection.number;
+        sectionNumbers.clear();
+        expectedSongCount = 0;
+        collectedSongCount = 0;
+        continue;
+      }
+      if (header == 'name') {
+        section = _PasteTableSection.name;
+        expectedSongCount = _expectedSongCountFromNumbers(sectionNumbers);
+        collectedSongCount = 0;
+        continue;
+      }
+      if (header == 'album') {
+        section = _PasteTableSection.album;
+        continue;
+      }
+      if (header == 'end' || header.startsWith('total')) {
+        section = _PasteTableSection.ended;
+        continue;
+      }
+
+      if (section == _PasteTableSection.number) {
+        final number = int.tryParse(trimmed);
+        if (number != null && number > 0 && number <= 200) {
+          sectionNumbers.add(number);
+        }
+        continue;
+      }
+
+      if (section == _PasteTableSection.name) {
+        if (_isStandalonePerformanceMetaLine(trimmed) ||
+            _isDateOrStructuredInfoLine(trimmed) ||
+            _isNarrativeNoiseLine(trimmed)) {
+          continue;
+        }
+        if (_isParentheticalEnglishSubtitle(trimmed) &&
+            filtered.isNotEmpty &&
+            _looksLikeEnglishTitleAbbreviation(filtered.last) &&
+            _isNaturalAbbreviationExpansion(filtered.last, trimmed)) {
+          filtered[filtered.length - 1] =
+              '${_normalizeEnglishTitleAbbreviation(filtered.last)} $trimmed';
+        } else {
+          filtered.add(
+            _looksLikeEnglishTitleAbbreviation(trimmed)
+                ? _normalizeEnglishTitleAbbreviation(trimmed)
+                : line,
+          );
+          collectedSongCount++;
+          if (expectedSongCount > 0 &&
+              collectedSongCount >= expectedSongCount) {
+            section = _PasteTableSection.ended;
+          }
+        }
+      }
+    }
+    return filtered;
+  }
+
+  bool _isStructuredTable(List<String> lines) {
+    final normalized = lines.map((line) => line.trim().toLowerCase()).toList();
+    return normalized.contains('num') &&
+        normalized.contains('name') &&
+        normalized.contains('album');
+  }
+
+  int _expectedSongCountFromNumbers(List<int> numbers) {
+    if (numbers.length < 5) {
+      return 0;
+    }
+    final minimum = numbers.reduce(min);
+    final maximum = numbers.reduce(max);
+    final rangeCount = maximum - minimum + 1;
+    return max(numbers.length, rangeCount);
+  }
+
+  bool _looksLikeEnglishTitleAbbreviation(String value) {
+    final compact = value.trim().replaceAll(RegExp(r'\s+'), '');
+    return RegExp(r'^(?:[A-Za-z0]\.){2,}[A-Za-z0]?$').hasMatch(compact) ||
+        RegExp(r'^[A-Za-z](?:&[A-Za-z])+$').hasMatch(compact);
+  }
+
+  String _normalizeEnglishTitleAbbreviation(String value) {
+    final compact = value.trim().replaceAll(RegExp(r'\s+'), '');
+    return RegExp(r'^(?:[A-Za-z0]\.){2,}[A-Za-z0]?$').hasMatch(compact)
+        ? compact.replaceAll('0', 'O')
+        : value.trim();
+  }
+
+  bool _isParentheticalEnglishSubtitle(String value) {
+    final match = RegExp(r'^\(([^()]+)\)$').firstMatch(value.trim());
+    if (match == null) {
+      return false;
+    }
+    final subtitle = match.group(1) ?? '';
+    return RegExp(r'[A-Za-z]').hasMatch(subtitle) &&
+        !RegExp(r'[가-힣ぁ-んァ-ヶ一-龯々]').hasMatch(subtitle);
+  }
+
+  bool _isNaturalAbbreviationExpansion(
+    String abbreviation,
+    String parentheticalSubtitle,
+  ) {
+    final abbreviationLetters = abbreviation
+        .replaceAll(RegExp(r'[^A-Za-z]'), '')
+        .toLowerCase();
+    final subtitle = parentheticalSubtitle
+        .replaceFirst(RegExp(r'^\('), '')
+        .replaceFirst(RegExp(r'\)$'), '');
+    final wordInitials = RegExp(r"[A-Za-z]+")
+        .allMatches(subtitle)
+        .map((match) => match.group(0)![0].toLowerCase())
+        .join();
+    return abbreviationLetters.length >= 2 &&
+        abbreviationLetters == wordInitials;
   }
 
   bool _isSocialAccountMetaLine(
@@ -824,8 +1359,9 @@ class _PasteSongParser {
     int lineIndex,
     int? totalLineCount,
   ) {
-    final compact = line.trim().replaceAll(RegExp(r'\s+'), '');
-    if (compact.startsWith('@') && compact.length > 1) {
+    final trimmed = line.trim();
+    final compact = trimmed.replaceAll(RegExp(r'\s+'), '');
+    if (RegExp(r'^@[A-Za-z0-9._-]+$').hasMatch(trimmed)) {
       return true;
     }
 
@@ -847,6 +1383,25 @@ class _PasteSongParser {
 
     final knownArtists = _knownArtistNamesForPaste();
     return !_matchesKnownArtist(compact, knownArtists);
+  }
+
+  bool _isTrailingArtistLogoLine(
+    String line,
+    String inferredArtist,
+    int lineIndex,
+    int? totalLineCount,
+  ) {
+    if (inferredArtist.trim().isEmpty ||
+        totalLineCount == null ||
+        lineIndex < totalLineCount - 4) {
+      return false;
+    }
+    final lineToken = _normalizeLogoToken(line);
+    final artistToken = _normalizeLogoToken(inferredArtist);
+    return lineToken.length >= 2 &&
+        (lineToken == artistToken ||
+            artistToken.startsWith(lineToken) ||
+            lineToken.startsWith(artistToken));
   }
 
   bool _looksLikePerformerCredit(String value) {
@@ -895,11 +1450,14 @@ class _PasteSongParser {
 
     final cleaned = _cleanArtistCandidate(
       trimmed,
-    ).toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    ).toLowerCase().replaceAll(RegExp(r"[\s'’.\[\]ㅋ♪]+"), '');
     return {
       '\uC120\uD0DD\uD55C\uACE1\uBAA9\uB85D',
       '\uC120\uD0DD\uACE1\uBAA9\uB85D',
       '\uC624\uB298\uC758\uD55C\uACE1',
+      '\uC624\uB298\uC758\uC14B\uB9AC\uC2A4\uD2B8',
+      '\uC624\uB298\uC758\uC14B\uB9AC\uC2A4\uD2B8\uB2E4\uC2DC\uB4E3\uAE30',
+      'todayssetlist',
       'tdm',
       'todaydrawmusic',
     }.contains(cleaned);
@@ -992,7 +1550,9 @@ class _PasteSongParser {
           }
           nextIndex++;
         }
-        if (nextLine != null && !_isPastedMetaLine(nextLine, '', nextIndex)) {
+        if (nextLine != null &&
+            !_hasExplicitListNumber(nextLine) &&
+            !_isPastedMetaLine(nextLine, '', nextIndex)) {
           merged.add('$trimmed $nextLine');
           index = nextIndex;
         }
@@ -1008,15 +1568,92 @@ class _PasteSongParser {
   }
 
   String _artistFromSetlistHeader(String line) {
+    if (_isTdmSharedListMetaLine(line) || _isStandaloneSetlistLine(line)) {
+      return '';
+    }
     final match = RegExp(
-      r'^(?:\d{4}[./-]\d{1,2}[./-]\d{1,2}\s+)?(.+?)\s+(?:셋리스트|setlist)$',
+      r'(.+?)\s+(?:셋리스트|set\s*list)(?:\s*[^A-Za-z가-힣]*)?$',
       caseSensitive: false,
     ).firstMatch(line.trim());
     if (match == null) {
       return '';
     }
-    final candidate = _cleanArtistCandidate(match.group(1) ?? '');
-    return _looksLikeArtistCandidate(candidate) ? candidate : '';
+    final prefix = (match.group(1) ?? '')
+        .replaceAll(
+          RegExp(r'''<|>|\[|\]|《|》|["“”'‘’][^"“”'‘’]*["“”'‘’]'''),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b'), ' ')
+        .replaceAll(RegExp(r'\b\d{4}\b'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final knownArtist = _knownArtistContainedIn(prefix);
+    if (knownArtist.isNotEmpty) {
+      return knownArtist;
+    }
+
+    if (_isWeekdayOrPerformanceRound(prefix) ||
+        _containsInstitutionOrEventOnlyKeyword(prefix)) {
+      final eventMarker = RegExp(
+        r'(?:대축제|축제|페스티벌|festival|fest|박람회|concert|콘서트|공연)',
+        caseSensitive: false,
+      ).allMatches(prefix).toList();
+      if (eventMarker.isEmpty) {
+        return '';
+      }
+      final suffix = _cleanArtistCandidate(
+        prefix.substring(eventMarker.last.end),
+      );
+      return _looksLikeStrongArtistName(suffix) ? suffix : '';
+    }
+
+    final candidate = _cleanArtistCandidate(prefix);
+    return _looksLikeStrongArtistName(candidate) ? candidate : '';
+  }
+
+  bool _looksLikeStrongArtistName(String value) {
+    final candidate = value.trim();
+    return _looksLikeArtistCandidate(candidate) &&
+        !_containsInstitutionOrEventOnlyKeyword(candidate) &&
+        !_isWeekdayOrPerformanceRound(candidate) &&
+        !RegExp(r'^\d+$').hasMatch(candidate);
+  }
+
+  bool _isWeekdayOrPerformanceRound(String value) {
+    final normalized = value.trim().toLowerCase().replaceAll(
+      RegExp(r'\s+'),
+      '',
+    );
+    return {
+          '\uC6D4\uC694\uC77C',
+          '\uD654\uC694\uC77C',
+          '\uC218\uC694\uC77C',
+          '\uBAA9\uC694\uC77C',
+          '\uAE08\uC694\uC77C',
+          '\uD1A0\uC694\uC77C',
+          '\uC77C\uC694\uC77C',
+        }.contains(normalized) ||
+        RegExp(r'^day\d+$').hasMatch(normalized);
+  }
+
+  bool _containsInstitutionOrEventOnlyKeyword(String value) {
+    final lower = value.toLowerCase();
+    return value.contains('\uB300\uD559\uAD50') ||
+        value.contains('\uB300\uD559') ||
+        value.contains('\uD559\uAD50') ||
+        value.contains('\uACE0\uB4F1\uD559\uAD50') ||
+        value.contains('\uBB38\uD654\uBE44\uCD95\uAE30\uC9C0') ||
+        value.contains('\uCCB4\uC721\uAD00') ||
+        value.contains('\uACF5\uC5F0\uC7A5') ||
+        value.contains('\uC704\uC6D0\uD68C') ||
+        value.contains('\uBC15\uB78C\uD68C') ||
+        value.contains('\uB300\uCD95\uC81C') ||
+        value.contains('\uCD95\uC81C') ||
+        value.contains('\uD398\uC2A4\uD2F0\uBC8C') ||
+        value.contains('\uD53C\uD06C\uB2C9') ||
+        lower.contains('festival') ||
+        lower.contains('fest') ||
+        lower.contains('stage');
   }
 
   String _stripPerformanceSuffix(String value) {
@@ -1039,6 +1676,9 @@ class _PasteSongParser {
 
   bool _isNoisyOcrMetaFragment(String line) {
     final candidate = line.trim();
+    if (RegExp(r'^(?:[A-Za-z]\.){2,}[A-Za-z]?$').hasMatch(candidate)) {
+      return false;
+    }
     if (RegExp(r'^\d+\)$').hasMatch(candidate)) {
       return true;
     }

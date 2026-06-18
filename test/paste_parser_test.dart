@@ -617,6 +617,589 @@ A\uB85C \uC0DD\uC131\uD55C \uCF58\uD150\uCE20
       },
     );
 
+    test('extracts artist from a sentence-style festival setlist header', () {
+      final analysis = parsePastedSongText(
+        text: '''
+<2025 \uCCAD\uAC15 \uB300\uCD95\uC81C '\uD53C\uC5B4\uB0A0' \uC5D4\uD50C\uB77C\uC789 \uC14B\uB9AC\uC2A4\uD2B8>
+01. \uB124\uAC00 \uB0B4 \uB9C8\uC74C\uC5D0 \uC790\uB9AC \uC7A1\uC558\uB2E4 (Into You)
+(Rooftop)
+02.
+03. Firefly
+04. Blue Moon
+2025.05.22
+05. Star
+06. \uC9C4\uC9DC\uAC00 \uB098\uD0C0\uB0AC\uB2E4 (The Real)
+''',
+        existingSongs: const [],
+      );
+
+      final titles = analysis.drafts.map((draft) => draft.title).toList();
+      expect(analysis.inferredArtist, '\uC5D4\uD50C\uB77C\uC789');
+      expect(titles, contains('Rooftop'));
+      expect(titles, contains('Firefly'));
+      expect(titles, isNot(contains('02.')));
+      expect(titles, isNot(contains('2025.05.22')));
+    });
+
+    test('uses concert header instead of weekday setlist metadata', () {
+      final analysis = parsePastedSongText(
+        text: '''
+N.Flying \uC18C\uADF9\uC7A5 \uCF58\uC11C\uD2B8
+\uC6B0\uB9CC\uD569
+: \uC6B0\uB9AC \uB9CC\uB098\uC11C \uC598\uAE30 \uC880 \uD569\uC2DC\uB2E4
+\uD1A0\uC694\uC77C \uC14B\uB9AC\uC2A4\uD2B8
+Sunset
+\uD30C\uB780\uBC30\uACBD
+Video Therapy
+\uBD04\uC774 \uBD80\uC2DC\uAC8C
+\uD53C\uC5C8\uC2B5\uB2C8\uB2E4
+ANYWAY
+Waiting for...
+Starlight
+\uD314\uBD88\uCD9C
+\uC625\uD0D1\uBC29
+Autumn Dream
+Stand By Me
+ONFlyingNote
+''',
+        existingSongs: const [],
+      );
+
+      expect(analysis.inferredArtist, 'N.Flying');
+      expect(analysis.drafts, hasLength(12));
+      expect(analysis.drafts.first.title, 'Sunset');
+      expect(analysis.drafts.last.title, 'Stand By Me');
+    });
+
+    test('infers a trailing logo artist while excluding school metadata', () {
+      final analysis = parsePastedSongText(
+        text: '''
+Today's Set List
+2025.05.21 \uACBD\uC778\uC5EC\uC790\uB300\uD559\uAD50
+2025 \uCCAD\uCD98 \uD398\uC2A4\uD2F0\uBC8C
+O Star
+\uD53C\uC5C8\uC2B5\uB2C8\uB2E4. (Into Bloom)
+3 Blue Moon
+6 Sunset
+@ \uC544\uC9C4\uC9DC\uC694. (Oh really.)
+[\uC624\uB298\uC758 \uC14B\uB9AC\uC2A4\uD2B8 \uB2E4\uC2DC \uB4E3\uAE30.\u314B
+NF
+NFlying
+''',
+        existingSongs: const [],
+      );
+
+      expect(analysis.inferredArtist, 'NFlying');
+      expect(analysis.drafts.map((draft) => draft.title).toList(), [
+        'Star',
+        '\uD53C\uC5C8\uC2B5\uB2C8\uB2E4. (Into Bloom)',
+        'Blue Moon',
+        'Sunset',
+        '\uC544\uC9C4\uC9DC\uC694. (Oh really.)',
+      ]);
+    });
+
+    test(
+      'does not infer a standalone short logo without supporting evidence',
+      () {
+        final nf = parsePastedSongText(text: 'NF', existingSongs: const []);
+        final key = parsePastedSongText(text: 'KEY', existingSongs: const []);
+
+        expect(nf.inferredArtist, isEmpty);
+        expect(key.inferredArtist, isEmpty);
+      },
+    );
+
+    test('infers a short logo when a related event brand supports it', () {
+      final analysis = parsePastedSongText(
+        text: '''
+2024 KEYLAND
+ON:AND ON
+SET LIST
+NUM
+DATE: 2024. 1. 27. - 2024. 1. 28.
+ADDRESS: OLYMPIC HANDBALL GYMNASIUM
+01
+02
+NAME
+Opening VCR
+Good & Great
+Saturday Night
+G.O.A.T
+(Greatest Of All Time)
+ALBUM
+Good & Great
+BAD LOVE
+NUM
+KEY
+15
+16
+NAME
+DANCER TIME
+Helium (\uD5EC\uB968)
+Bound
+MENT
+Forever Yours
+Total
+END
+ALBUM
+BAD LOVE
+Gasoline
+2:35:46
+''',
+        existingSongs: const [],
+      );
+
+      final titles = analysis.drafts.map((draft) => draft.title).toList();
+      expect(analysis.inferredArtist, 'KEY');
+      expect(titles, [
+        'Good & Great',
+        'Saturday Night',
+        'G.O.A.T (Greatest Of All Time)',
+        'Helium (\uD5EC\uB968)',
+        'Bound',
+        'Forever Yours',
+      ]);
+      expect(titles, isNot(contains('BAD LOVE')));
+      expect(titles, isNot(contains('Opening VCR')));
+      expect(titles, isNot(contains('DANCER TIME')));
+    });
+
+    test(
+      'keeps Live Without You in a KEYLAND NAME section without inferring it',
+      () {
+        final analysis = parsePastedSongText(
+          text: '''
+2024 KEYLAND
+ON:AND ON
+SET LIST
+NUM
+01
+02
+03
+04
+05
+NAME
+Good & Great
+Live Without You
+G.O.A.T
+(Greatest Of All Time)
+Helium (헬륨)
+Forever Yours
+ALBUM
+Good & Great
+BAD LOVE
+Gasoline
+KEY
+''',
+          existingSongs: const [],
+        );
+
+        final titles = analysis.drafts.map((draft) => draft.title).toList();
+        expect(analysis.inferredArtist, 'KEY');
+        expect(analysis.inferredArtist, isNot('Without You'));
+        expect(titles, contains('Live Without You'));
+        expect(titles, contains('G.O.A.T (Greatest Of All Time)'));
+      },
+    );
+
+    test('stops a KEYLAND table after song 23 before QR narrative text', () {
+      final numbers = List.generate(
+        23,
+        (index) => (index + 1).toString().padLeft(2, '0'),
+      ).join('\n');
+      final songNames = [
+        ...List.generate(22, (index) => 'Song ${index + 1}'),
+        'Forever Yours',
+      ].join('\n');
+      final analysis = parsePastedSongText(
+        text:
+            '''
+2024 KEYLAND
+SET LIST
+NUM
+$numbers
+NAME
+$songNames
+공연을 함께해 주신 모든 분들께 진심으로 감사드립니다. 우리 앞으로도 오래오래 행복한 추억을 만들어요.
+QR CODE
+Total 2:35:46
+END
+ALBUM
+Good & Great
+BAD LOVE
+KEY
+''',
+        existingSongs: const [],
+      );
+
+      final titles = analysis.drafts.map((draft) => draft.title).toList();
+      expect(analysis.inferredArtist, 'KEY');
+      expect(titles, hasLength(23));
+      expect(titles.last, 'Forever Yours');
+      expect(titles, isNot(contains('QR CODE')));
+      expect(
+        titles,
+        isNot(
+          contains('공연을 함께해 주신 모든 분들께 진심으로 감사드립니다. 우리 앞으로도 오래오래 행복한 추억을 만들어요.'),
+        ),
+      );
+      expect(titles, isNot(contains('Good & Great')));
+      expect(titles, isNot(contains('BAD LOVE')));
+    });
+
+    test('parses the full two-section KEYLAND table in order', () {
+      final analysis = parsePastedSongText(
+        text: '''
+2024 KEYLAND
+ONANDON
+SET LIST
+NUM
+01
+02
+03
+04
+05
+06
+07
+08
+09
+10
+11
+12
+13
+14
+NAME
+Opening VCR
+Good & Great
+Saturday Night
+MENT
+I Wanna Be
+Easy To Love
+미워 (The Duty of Love)
+Heartless
+Hologram
+BAND TIME
+BAD LOVE
+Can't Say Goodbye
+CoolAs
+Live Without You
+Killer
+Intoxicating (with Kany)
+Imagine
+ALBUM
+Good & Great
+BAD LOVE
+Gasoline
+NUM
+KEY
+15
+16
+17
+18
+19
+20
+21
+22
+23
+NAME
+DANCER TIME
+Helium (헬륨)
+Bound
+MENT
+Another Life
+Yellow Tape
+MENT
+Mirror, Mirror
+G. O. A. T
+(Greatest Of All Time)
+ENCORE
+I Can't Sleep
+MENT
+가솔린(Gasoline)
+RE-ENCORE
+Forever Yours
+공연을 함께해 주신 모든 분들께 진심으로 감사드립니다. 우리 앞으로도 오래오래 행복한 추억을 만들어요.
+Total
+2:35:46
+END
+ALBUM
+BAD LOVE
+Gasoline
+Good & Great
+''',
+        existingSongs: const [],
+      );
+
+      expect(analysis.inferredArtist, 'KEY');
+      expect(analysis.inferredArtist, isNot(anyOf('Gasoline', 'Without You')));
+      expect(analysis.drafts.map((draft) => draft.title).toList(), [
+        'Good & Great',
+        'Saturday Night',
+        'I Wanna Be',
+        'Easy To Love',
+        '미워 (The Duty of Love)',
+        'Heartless',
+        'Hologram',
+        'BAD LOVE',
+        "Can't Say Goodbye",
+        'CoolAs',
+        'Live Without You',
+        'Killer',
+        'Intoxicating (with Kany)',
+        'Imagine',
+        'Helium (헬륨)',
+        'Bound',
+        'Another Life',
+        'Yellow Tape',
+        'Mirror, Mirror',
+        'G.O.A.T (Greatest Of All Time)',
+        "I Can't Sleep",
+        '가솔린(Gasoline)',
+        'Forever Yours',
+      ]);
+    });
+
+    test('parses the exact KEYLAND phone OCR text', () {
+      final analysis = parsePastedSongText(
+        text: '''
+ONANDON
+NUM
+DATE:2024. 1. 27.- 2024. 1. 28.
+ADDRESS: OLYMPIC HANDBALL GYMNASIUM
+01
+02
+03
+04
+05
+06
+07
+09
+10
+11
+12
+2024 KEYLAND
+13
+14
+SET LIST
+NAME
+Opning VCR
+Good & Great
+Saturday Night
+IWanna Be
+Easy To Love
+미워 (The Duty of Love)
+MENT
+Heartless
+Hologram
+BAND TIME
+BAD LOVE
+Can't Say Goodbye
+CoolAs
+Live Without You
+Killer
+MENT
+Intoxicating (with Kany)
+Imagine
+ALBUM
+Good & Great
+BAD LOVE
+IWanna Be
+FACE
+FACE
+Killer
+Hologram
+BAD LOVE
+Good & Great
+Good & Great
+Good & Great
+Killer
+Good & Great
+FACE
+NUM
+KEY
+15
+16
+17
+18
+19
+20
+21
+22
+23
+NAME
+DANCER TIME
+Helium (헬륨)
+Bound
+MENT
+Another Life
+Yellow Tape
+MENT
+Mirror, Mirror
+G.0.A.T
+(Greatest Of All Time)
+ENCORE
+ICan't Sleep
+MENT
+가솔린(Gasoline)
+RE-ENCORE
+Forever Yours
+이전아니g어 알지?
+이는 꽃이아니아
+내일일나서 선운해랑 일전혀 아나야
+우뢰 다 여기 있었어
+겨우시 출려가도 여기서먼나자
+기버하면살이가주세.
+저도 그력게요
+Total
+END
+ALBUM
+BAD LOVE
+Gasoline
+Gasoline
+BAD LOVE
+Good & Great
+Gasoline
+Gasoline
+Gasoline
+Forever Yours
+2:35:46
+''',
+        existingSongs: const [],
+      );
+
+      final titles = analysis.drafts.map((draft) => draft.title).toList();
+      expect(analysis.inferredArtist, 'KEY');
+      expect(titles, hasLength(23));
+      expect(analysis.candidates, hasLength(23));
+      expect(titles, contains('Live Without You'));
+      expect(titles, contains('G.O.A.T (Greatest Of All Time)'));
+      expect(titles, contains('Forever Yours'));
+      expect(titles, isNot(contains('이전아니g어 알지?')));
+      expect(titles, isNot(contains('Gasoline')));
+    });
+
+    test('does not infer an artist from structured table cell values', () {
+      final analysis = parsePastedSongText(
+        text: '''
+2024 KEYLAND
+SET LIST
+NUM
+01
+NAME
+Live Without You
+ALBUM
+Gasoline
+Good & Great
+''',
+        existingSongs: const [],
+      );
+
+      expect(analysis.inferredArtist, isEmpty);
+      expect(analysis.inferredArtist, isNot(anyOf('Gasoline', 'Without You')));
+      expect(analysis.drafts.single.title, 'Live Without You');
+    });
+
+    test('preserves dotted and ampersand title abbreviations in NAME', () {
+      final analysis = parsePastedSongText(
+        text: '''
+2024 KEYLAND
+SET LIST
+NUM
+01
+02
+03
+04
+NAME
+G.O.A.T
+(Greatest Of All Time)
+F.T.W
+U&I
+A.B.C
+ALBUM
+Gasoline
+KEY
+''',
+        existingSongs: const [],
+      );
+
+      expect(analysis.inferredArtist, 'KEY');
+      expect(analysis.drafts.map((draft) => draft.title).toList(), [
+        'G.O.A.T (Greatest Of All Time)',
+        'F.T.W',
+        'U&I',
+        'A.B.C',
+      ]);
+    });
+
+    test('does not over-filter NAME and ALBUM outside table context', () {
+      final analysis = parsePastedSongText(
+        text: '''
+N.Flying SETLIST
+NAME
+ALBUM
+Blue Moon
+''',
+        existingSongs: const [],
+      );
+
+      expect(analysis.drafts.map((draft) => draft.title).toList(), [
+        'NAME',
+        'ALBUM',
+        'Blue Moon',
+      ]);
+    });
+
+    test(
+      'keeps numeric song titles while cleaning repeated OCR number noise',
+      () {
+        final analysis = parsePastedSongText(
+          text: '''
+N.Flying SETLIST
+O Star
+3 Blue Moon
+6 Sunset
+@ \uC544\uC9C4\uC9DC\uC694.
+7 Days
+10\uBD84 \uC804
+24\uC2DC\uAC04
+1000 Years
+4242
+''',
+          existingSongs: const [],
+        );
+
+        expect(analysis.drafts.map((draft) => draft.title).toList(), [
+          'Star',
+          'Blue Moon',
+          'Sunset',
+          '\uC544\uC9C4\uC9DC\uC694.',
+          '7 Days',
+          '10\uBD84 \uC804',
+          '24\uC2DC\uAC04',
+          '1000 Years',
+          '4242',
+        ]);
+      },
+    );
+
+    test('excludes receipt metadata and long narrative noise', () {
+      final analysis = parsePastedSongText(
+        text: '''
+N.Flying SETLIST
+DATE: 2025.05.22
+ADDRESS: SOME HALL
+Star
+TOTAL 2:35:46
+\uC624\uB298 \uACF5\uC5F0\uC744 \uD568\uAED8\uD574 \uC8FC\uC154\uC11C \uC815\uB9D0 \uAC10\uC0AC\uD569\uB2C8\uB2E4. \uB2E4\uC74C\uC5D0\uB3C4 \uAF2D \uB9CC\uB098\uC694.
+END
+''',
+        existingSongs: const [],
+      );
+
+      expect(analysis.drafts.map((draft) => draft.title).toList(), ['Star']);
+    });
+
     test('handles empty input', () {
       final analysis = parsePastedSongText(text: '', existingSongs: const []);
 
