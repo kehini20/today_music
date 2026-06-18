@@ -483,6 +483,140 @@ ENCORE
       },
     );
 
+    test('prioritizes explicit artist setlist header over event metadata', () {
+      final analysis = parsePastedSongText(
+        text: '''
+\uAC15\uB0A8\uAD6C
+GANGNAM GU
+2026
+AI\uB85C \uC0DD\uC131\uD55C \uCF58\uD150\uCE20
+\uAC15\uB0A8\uD53C\uD06C\uB2C9 \uCF58\uC11C\uD2B8
+N.Flying SETLIST
+\uD658\uC808\uAE30
+Blue Moon
+Sunset
+Songbird
+\uC625\uD0D1\uBC29
+ONFlyingNote
+''',
+        existingSongs: const [],
+      );
+
+      expect(analysis.inferredArtist, 'N.Flying');
+      expect(analysis.drafts.map((draft) => draft.title).toList(), [
+        '\uD658\uC808\uAE30',
+        'Blue Moon',
+        'Sunset',
+        'Songbird',
+        '\uC625\uD0D1\uBC29',
+      ]);
+    });
+
+    test('excludes all lines above explicit setlist header', () {
+      final analysis = parsePastedSongText(
+        text: '''
+Beautiful
+Mint Life 2026
+5.30.Sat-5.31.Sun \uC11C\uC6B8 \uBB38\uD654\uBE44\uCD95\uAE30\uC9C0
+N.Flying SETLIST
+\uC625\uD0D1\uBC29
+Blue Moon
+The World is mine
+\uB108 \uC5C6\uB294 \uB09C
+Run Like This
+Firefly
+Autumn Dream
+\uD53C\uC5C8\uC2B5\uB2C8\uB2E4.
+\uD658\uC808\uAE30
+\uD658\uC808\uAE30
+Flashback
+@NFlyingNote
+''',
+        existingSongs: const [],
+      );
+
+      final titles = analysis.drafts.map((draft) => draft.title).toList();
+      expect(analysis.inferredArtist, 'N.Flying');
+      expect(titles, hasLength(11));
+      expect(titles.first, '\uC625\uD0D1\uBC29');
+      expect(titles.last, 'Flashback');
+      expect(
+        titles.where((title) => title == '\uD658\uC808\uAE30'),
+        hasLength(2),
+      );
+      expect(titles, isNot(contains('Beautiful')));
+      expect(titles, isNot(contains('@NFlyingNote')));
+    });
+
+    test(
+      'keeps standalone setlist artist empty and excludes event metadata',
+      () {
+        final analysis = parsePastedSongText(
+          text: '''
+2026 \uC644\uB3C4 \uAD6D\uC81C \uD574\uC870\uB958 \uBC15\uB78C\uD68C
+SETLIST
+Star
+Blue Moon
+Sunset
+4242
+\uAD7F\uBC24
+\uC625\uD0D1\uBC29
+''',
+          existingSongs: const [],
+        );
+
+        expect(analysis.inferredArtist, isEmpty);
+        expect(analysis.drafts.map((draft) => draft.title).toList(), [
+          'Star',
+          'Blue Moon',
+          'Sunset',
+          '4242',
+          '\uAD7F\uBC24',
+          '\uC625\uD0D1\uBC29',
+        ]);
+        expect(
+          analysis.candidates.every(
+            (candidate) =>
+                candidate.status == PasteSongCandidateStatus.needsReview,
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'excludes standalone stage, generated-content, and account metadata',
+      () {
+        final analysis = parsePastedSongText(
+          text: '''
+N.Flying SETLIST
+STAGE
+Plain text
+AI\uB85C \uC0DD\uC131\uD55C \uCF58\uD150\uCE20
+A\uB85C \uC0DD\uC131\uD55C \uCF58\uD150\uCE20
+4242
+1\uBD84
+10\uBD84 \uC804
+24\uC2DC\uAC04
+1000 Years
+1\u5206
+@NFlyingNote
+''',
+          existingSongs: const [],
+        );
+
+        expect(analysis.inferredArtist, 'N.Flying');
+        expect(analysis.drafts.map((draft) => draft.title).toList(), [
+          '4242',
+          '1\uBD84',
+          '10\uBD84 \uC804',
+          '24\uC2DC\uAC04',
+          '1000 Years',
+          '1\u5206',
+        ]);
+      },
+    );
+
     test('handles empty input', () {
       final analysis = parsePastedSongText(text: '', existingSongs: const []);
 

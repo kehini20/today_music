@@ -55,6 +55,13 @@ class PasteSongAnalysis {
   });
 }
 
+class _ExplicitSetlistHeader {
+  final int index;
+  final String artist;
+
+  const _ExplicitSetlistHeader({required this.index, required this.artist});
+}
+
 const String _kSetlist = '\uC14B\uB9AC\uC2A4\uD2B8';
 const String _kConcert = '\uACF5\uC5F0';
 const String _kConcertKo = '\uCF58\uC11C\uD2B8';
@@ -96,20 +103,36 @@ class _PasteSongParser {
   });
 
   PasteSongAnalysis parse(String text) {
-    final inferredArtist = _inferPastedArtist(text);
+    final mergedLines = _mergeNumberOnlyLines(
+      const LineSplitter().convert(text),
+    );
+    final explicitSetlistHeader = _findExplicitSetlistHeader(mergedLines);
+    final inferredArtist =
+        explicitSetlistHeader?.artist ?? _inferPastedArtist(text);
     final drafts = <PasteSongDraft>[];
     var lineIndex = 0;
 
-    for (final rawLine in _mergeNumberOnlyLines(
-      const LineSplitter().convert(text),
-    )) {
+    for (final rawLine in mergedLines) {
       final rawTrimmedLine = rawLine.trim();
       if (rawTrimmedLine.isEmpty) {
         lineIndex++;
         continue;
       }
 
-      if (_isPastedMetaLine(rawTrimmedLine, inferredArtist, lineIndex)) {
+      if (explicitSetlistHeader != null &&
+          lineIndex <= explicitSetlistHeader.index) {
+        lineIndex++;
+        continue;
+      }
+
+      final hasListNumber = _hasExplicitListNumber(rawTrimmedLine);
+      if (_isPastedMetaLine(
+        rawTrimmedLine,
+        inferredArtist,
+        lineIndex,
+        totalLineCount: mergedLines.length,
+        isNumberedSongLine: hasListNumber,
+      )) {
         lineIndex++;
         continue;
       }
@@ -123,7 +146,13 @@ class _PasteSongParser {
         continue;
       }
 
-      if (_isPastedMetaLine(cleanedLine, inferredArtist, lineIndex)) {
+      if (_isPastedMetaLine(
+        cleanedLine,
+        inferredArtist,
+        lineIndex,
+        totalLineCount: mergedLines.length,
+        isNumberedSongLine: hasListNumber,
+      )) {
         lineIndex++;
         continue;
       }
@@ -230,6 +259,15 @@ class _PasteSongParser {
         .where((line) => line.isNotEmpty)
         .where((line) => !_isTdmSharedListMetaLine(line))
         .toList();
+    final explicitHeader = _findExplicitSetlistHeader(lines);
+    if (explicitHeader != null) {
+      return explicitHeader.artist;
+    }
+
+    if (lines.any(_isStandaloneSetlistLine)) {
+      return '';
+    }
+
     final topLines = lines.take(5).toList();
 
     for (final line in topLines) {
@@ -275,6 +313,16 @@ class _PasteSongParser {
     }
 
     return '';
+  }
+
+  _ExplicitSetlistHeader? _findExplicitSetlistHeader(List<String> lines) {
+    for (var index = 0; index < lines.length; index++) {
+      final artist = _artistFromSetlistHeader(lines[index]);
+      if (artist.isNotEmpty) {
+        return _ExplicitSetlistHeader(index: index, artist: artist);
+      }
+    }
+    return null;
   }
 
   Song? _parsePastedSongLine(
@@ -682,7 +730,13 @@ class _PasteSongParser {
     return RegExp(r'[A-Za-z가-힣ぁ-んァ-ヶ一-龯々]').hasMatch(candidate);
   }
 
-  bool _isPastedMetaLine(String line, String inferredArtist, int lineIndex) {
+  bool _isPastedMetaLine(
+    String line,
+    String inferredArtist,
+    int lineIndex, {
+    int? totalLineCount,
+    bool isNumberedSongLine = false,
+  }) {
     if (RegExp(r'^[=\-–—_\s]+$').hasMatch(line)) {
       return true;
     }
@@ -691,7 +745,15 @@ class _PasteSongParser {
       return true;
     }
 
-    if (_isEncoreOrPerformanceMetaLine(line) || _isNoisyOcrMetaFragment(line)) {
+    if (!isNumberedSongLine && _isStandalonePerformanceMetaLine(line)) {
+      return true;
+    }
+
+    if (_isSocialAccountMetaLine(line, lineIndex, totalLineCount)) {
+      return true;
+    }
+
+    if (_isNoisyOcrMetaFragment(line)) {
       return true;
     }
 
@@ -734,6 +796,57 @@ class _PasteSongParser {
     }
 
     return headerArtist.toLowerCase() == inferredArtist.trim().toLowerCase();
+  }
+
+  bool _hasExplicitListNumber(String line) {
+    return RegExp(r'^\s*\d{1,3}\s*(?:[.)．]\s*|[-:]\s*)').hasMatch(line);
+  }
+
+  bool _isStandaloneSetlistLine(String line) {
+    final normalized = line.trim().toLowerCase();
+    return normalized == 'setlist' || line.trim() == _kSetlist;
+  }
+
+  bool _isStandalonePerformanceMetaLine(String line) {
+    final normalized = line.trim().replaceAll(RegExp(r'\s+'), '').toLowerCase();
+    return normalized == 'mc' ||
+        normalized == 'm.c.' ||
+        normalized == 'stage' ||
+        normalized == 'plaintext' ||
+        normalized == 'ai\uB85C\uC0DD\uC131\uD55C\uCF58\uD150\uCE20' ||
+        normalized == 'a\uB85C\uC0DD\uC131\uD55C\uCF58\uD150\uCE20' ||
+        RegExp(r'^\uC575\uCF5C\d*$').hasMatch(normalized) ||
+        RegExp(r'^encore\d*$').hasMatch(normalized);
+  }
+
+  bool _isSocialAccountMetaLine(
+    String line,
+    int lineIndex,
+    int? totalLineCount,
+  ) {
+    final compact = line.trim().replaceAll(RegExp(r'\s+'), '');
+    if (compact.startsWith('@') && compact.length > 1) {
+      return true;
+    }
+
+    if (totalLineCount == null || totalLineCount <= 0) {
+      return false;
+    }
+
+    final isNearEnd = lineIndex >= totalLineCount - 3;
+    if (!isNearEnd ||
+        !RegExp(r'^[O0][A-Za-z0-9._-]{3,24}$').hasMatch(compact)) {
+      return false;
+    }
+
+    final lower = compact.toLowerCase();
+    const accountSuffixes = ['note', 'official', 'update', 'fan', 'archive'];
+    if (!accountSuffixes.any(lower.endsWith)) {
+      return false;
+    }
+
+    final knownArtists = _knownArtistNamesForPaste();
+    return !_matchesKnownArtist(compact, knownArtists);
   }
 
   bool _looksLikePerformerCredit(String value) {
@@ -813,7 +926,11 @@ class _PasteSongParser {
         value.contains(_kLiveKo) ||
         value.contains('\uBC84\uC2A4\uD0B9') ||
         value.contains('\uC601\uD654\uC81C') ||
-        value.contains('\uD398\uC2A4\uD2F0\uBC8C');
+        value.contains('\uD398\uC2A4\uD2F0\uBC8C') ||
+        value.contains('\uBC15\uB78C\uD68C') ||
+        value.contains('\uCD95\uC81C') ||
+        value.contains('\uD53C\uD06C\uB2C9') ||
+        value.contains('\uBB38\uD654\uD589\uC0AC');
   }
 
   bool _looksLikeEventHeader(String value) {
@@ -827,6 +944,10 @@ class _PasteSongParser {
         lowerValue.contains('busking') ||
         value.contains('\uC601\uD654\uC81C') ||
         value.contains('\uD398\uC2A4\uD2F0\uBC8C') ||
+        value.contains('\uBC15\uB78C\uD68C') ||
+        value.contains('\uCD95\uC81C') ||
+        value.contains('\uD53C\uD06C\uB2C9') ||
+        value.contains('\uBB38\uD654\uD589\uC0AC') ||
         value.contains('\uBD80\uC0B0') ||
         lowerValue.contains(' in ');
   }
@@ -914,14 +1035,6 @@ class _PasteSongParser {
       return trimmed;
     }
     return (match.group(1) ?? '').trim();
-  }
-
-  bool _isEncoreOrPerformanceMetaLine(String line) {
-    final normalized = line.trim().replaceAll(RegExp(r'\s+'), '').toLowerCase();
-    return normalized == 'mc' ||
-        normalized == 'm.c.' ||
-        RegExp(r'^앵콜\d*$').hasMatch(normalized) ||
-        RegExp(r'^encore\d*$').hasMatch(normalized);
   }
 
   bool _isNoisyOcrMetaFragment(String line) {
@@ -1033,18 +1146,26 @@ List<_OcrTitleCandidate> _extractOcrTitleCandidates(
 ) {
   final inferredArtist = parser._inferPastedArtist(text);
   final candidates = <_OcrTitleCandidate>[];
+  final mergedLines = parser._mergeNumberOnlyLines(
+    const LineSplitter().convert(text),
+  );
   var lineIndex = 0;
 
-  for (final rawLine in parser._mergeNumberOnlyLines(
-    const LineSplitter().convert(text),
-  )) {
+  for (final rawLine in mergedLines) {
     final rawTrimmedLine = rawLine.trim();
     if (rawTrimmedLine.isEmpty) {
       lineIndex++;
       continue;
     }
 
-    if (parser._isPastedMetaLine(rawTrimmedLine, inferredArtist, lineIndex)) {
+    final hasListNumber = parser._hasExplicitListNumber(rawTrimmedLine);
+    if (parser._isPastedMetaLine(
+      rawTrimmedLine,
+      inferredArtist,
+      lineIndex,
+      totalLineCount: mergedLines.length,
+      isNumberedSongLine: hasListNumber,
+    )) {
       lineIndex++;
       continue;
     }
@@ -1059,7 +1180,13 @@ List<_OcrTitleCandidate> _extractOcrTitleCandidates(
       continue;
     }
 
-    if (parser._isPastedMetaLine(cleanedLine, inferredArtist, lineIndex)) {
+    if (parser._isPastedMetaLine(
+      cleanedLine,
+      inferredArtist,
+      lineIndex,
+      totalLineCount: mergedLines.length,
+      isNumberedSongLine: hasListNumber,
+    )) {
       lineIndex++;
       continue;
     }

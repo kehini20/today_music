@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'sample_songs.dart';
 import 'ocr/text_ocr_service.dart';
 import 'paste_parser.dart';
+import 'share_text.dart';
 import 'song.dart';
 import 'sponsor_ad.dart';
 
@@ -686,28 +687,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   String _buildShareText(Song song) {
-    final link = song.link.trim();
-    final tags = [
-      ...visibleSongTags(song.tags),
-      if (_includeTodayTag) '#오늘의한곡',
-    ];
-    final lines = <String>['오늘의 한 곡 🎧'];
-
-    if (_defaultShareMessage.trim().isNotEmpty) {
-      lines.addAll(['', _defaultShareMessage.trim()]);
-    }
-
-    lines.addAll(['', '${song.artist} - ${song.title}']);
-
-    if (_includeSongLink && link.isNotEmpty) {
-      lines.addAll(['', link]);
-    }
-
-    if (tags.isNotEmpty) {
-      lines.addAll(['', tags.join(' ')]);
-    }
-
-    return lines.join('\n');
+    return buildSongShareText(
+      song: song,
+      defaultMessage: _defaultShareMessage,
+      includeSongLink: _includeSongLink,
+      includeTodayTag: _includeTodayTag,
+    );
   }
 
   void _resetShareText(Song song) {
@@ -3023,16 +3008,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                                 : '\uC774\uBBF8\uC9C0\uC5D0\uC11C \uBD88\uB7EC\uC624\uAE30',
                                           ),
                                         ),
-                                        TextButton.icon(
-                                          onPressed: isOcrRunning
-                                              ? null
-                                              : () => importTextFromImage(
-                                                  OcrRecognitionMode.japanese,
-                                                ),
-                                          icon: const Icon(Icons.translate),
-                                          label: const Text(
-                                            '\uC77C\uBCF8\uC5B4\uB85C \uBD88\uB7EC\uC624\uAE30',
-                                          ),
+                                        const HelpIconButton(
+                                          title:
+                                              '\uC774\uBBF8\uC9C0\uC5D0\uC11C \uACE1 \uBD88\uB7EC\uC624\uAE30',
+                                          message:
+                                              '\uC774\uBBF8\uC9C0 \uAE00\uC790 \uC778\uC2DD\uC740 \uD55C\uAD6D\uC5B4\u00B7\uC601\uC5B4 \uC14B\uB9AC\uC2A4\uD2B8\uC5D0 \uC6B0\uC120 \uB9DE\uCDB0\uC838 \uC788\uC2B5\uB2C8\uB2E4.\n'
+                                              '\uC77C\uBD80 \uAE00\uC790\uB294 \uC798\uBABB \uC77D\uD790 \uC218 \uC788\uC73C\uB2C8 \uBD84\uC11D \uACB0\uACFC\uB97C \uD655\uC778\uD558\uACE0 \uD544\uC694\uD55C \uACE1\uBA85\uC744 \uC218\uC815\uD574 \uC8FC\uC138\uC694.',
                                         ),
                                       ],
                                     ),
@@ -3148,20 +3129,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
                   .trim();
             }
 
-            String? alternateTitleFor(int index, PasteSongCandidate candidate) {
-              if (index >= titleAlternatives.length) {
-                return null;
-              }
-              final alternateTitle = titleAlternatives[index]?.trim();
-              if (alternateTitle == null || alternateTitle.isEmpty) {
-                return null;
-              }
-              if (alternateTitle == currentCandidateTitle(index, candidate)) {
-                return null;
-              }
-              return alternateTitle;
-            }
-
             void applyCandidateTitleEdit(
               int index,
               PasteSongCandidate candidate,
@@ -3248,97 +3215,20 @@ class _TodaySongPageState extends State<TodaySongPage> {
               return editedTitle;
             }
 
-            Future<String?> showAutoTitleEditDialog(String alternateTitle) {
-              return showDialog<String>(
-                context: analysisContext,
-                builder: (autoContext) {
-                  return AlertDialog(
-                    title: const Text('\uACE1\uBA85 \uC218\uC815'),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '\uB2E4\uB978 \uC778\uC2DD \uACB0\uACFC',
-                          style: TextStyle(
-                            color: tdmTextSub,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SelectableText(alternateTitle),
-                      ],
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(autoContext).pop(),
-                        child: const Text('\uCDE8\uC18C'),
-                      ),
-                      FilledButton(
-                        onPressed: () =>
-                            Navigator.of(autoContext).pop(alternateTitle),
-                        child: const Text('\uC801\uC6A9'),
-                      ),
-                    ],
-                  );
-                },
-              );
-            }
-
             Future<void> editCandidateTitle(
               int index,
               PasteSongCandidate candidate,
             ) async {
-              final alternateTitle = alternateTitleFor(index, candidate);
-              final action = await showDialog<String>(
-                context: analysisContext,
-                builder: (choiceContext) {
-                  return AlertDialog(
-                    title: const Text('\uACE1\uBA85 \uC218\uC815'),
-                    content: alternateTitle == null
-                        ? const Text(
-                            '\uC790\uB3D9\uC73C\uB85C \uC218\uC815\uD560 \uD6C4\uBCF4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.',
-                          )
-                        : null,
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(choiceContext).pop(),
-                        child: const Text('\uCDE8\uC18C'),
-                      ),
-                      if (alternateTitle != null)
-                        TextButton(
-                          onPressed: () =>
-                              Navigator.of(choiceContext).pop('auto'),
-                          child: const Text('\uC790\uB3D9 \uC218\uC815'),
-                        ),
-                      FilledButton(
-                        onPressed: () =>
-                            Navigator.of(choiceContext).pop('manual'),
-                        child: const Text('\uC9C1\uC811 \uC218\uC815'),
-                      ),
-                    ],
-                  );
-                },
+              final editedTitle = await showDirectTitleEditDialog(
+                index,
+                candidate,
               );
-
-              if (action == null) {
-                return;
-              }
-
-              String? editedTitle;
-              if (action == 'auto' && alternateTitle != null) {
-                editedTitle = await showAutoTitleEditDialog(alternateTitle);
-              } else {
-                editedTitle = await showDirectTitleEditDialog(index, candidate);
-              }
-
               if (editedTitle == null || editedTitle.trim().isEmpty) {
                 return;
               }
 
               refreshDialog(() {
-                applyCandidateTitleEdit(index, candidate, editedTitle!);
+                applyCandidateTitleEdit(index, candidate, editedTitle);
               });
             }
 
@@ -6175,7 +6065,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
               maxLines: 2,
               decoration: const InputDecoration(
                 labelText: '공유 기본 메시지',
-                hintText: '예: 오늘의 한 곡 🎧',
+                hintText: '예: 오늘은 이 곡을 들어보세요.',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -6217,6 +6107,46 @@ class _SettingsDialogState extends State<SettingsDialog> {
           ],
         ),
       ],
+    );
+  }
+}
+
+class HelpIconButton extends StatelessWidget {
+  final String tooltip;
+  final String title;
+  final String message;
+
+  const HelpIconButton({
+    super.key,
+    this.tooltip = '\uB3C4\uC6C0\uB9D0',
+    required this.title,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      icon: const Icon(Icons.help_outline),
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      onPressed: () {
+        showDialog<void>(
+          context: context,
+          builder: (dialogContext) {
+            return AlertDialog(
+              title: Text(title),
+              content: Text(message),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('\uB2EB\uAE30'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
