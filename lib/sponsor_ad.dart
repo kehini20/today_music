@@ -150,14 +150,17 @@ const MainSponsorAd fallbackMainAd = MainSponsorAd(
   song: null,
 );
 
+typedef SponsorAdFetcher = Future<http.Response> Function(Uri uri);
+
 Future<SponsorAdConfig> loadSponsorAdConfig({
   String configUrl = adConfigUrl,
+  SponsorAdFetcher fetch = http.get,
 }) async {
   final resolvedConfigUrl = _resolveAdConfigUrl(configUrl);
   debugPrint('SponsorAd config load start: $resolvedConfigUrl');
 
   try {
-    final response = await http.get(Uri.parse(resolvedConfigUrl));
+    final response = await fetch(Uri.parse(resolvedConfigUrl));
 
     if (response.statusCode != 200) {
       debugPrint(
@@ -179,15 +182,13 @@ Future<SponsorAdConfig> loadSponsorAdConfig({
       return const SponsorAdConfig(bottomAd: fallbackBottomAd, mainAd: null);
     }
 
-    final now = DateTime.now();
-    final bottomAd = _resolveSponsorAdImageUrl(
-      _selectBottomAd(decoded, now, resolvedConfigUrl),
-      resolvedConfigUrl,
+    final selectedConfig = selectSponsorAdConfigFromJson(
+      Map<dynamic, dynamic>.from(decoded),
+      now: DateTime.now(),
+      configUrl: resolvedConfigUrl,
     );
-    final selectedMainAd = _selectMainAd(decoded, now);
-    final mainAd = selectedMainAd == null
-        ? null
-        : _resolveMainSponsorAdImageUrl(selectedMainAd, resolvedConfigUrl);
+    final bottomAd = selectedConfig.bottomAd;
+    final mainAd = selectedConfig.mainAd;
 
     debugPrint(
       'SponsorAd loaded: enabled=${bottomAd.enabled}, imageUrl=${bottomAd.imageUrl}',
@@ -206,6 +207,22 @@ Future<SponsorAdConfig> loadSponsorAdConfig({
     debugPrint('SponsorAd config load error: $resolvedConfigUrl / $error');
     return const SponsorAdConfig(bottomAd: fallbackBottomAd, mainAd: null);
   }
+}
+
+SponsorAdConfig selectSponsorAdConfigFromJson(
+  Map<dynamic, dynamic> decoded, {
+  required DateTime now,
+  required String configUrl,
+}) {
+  final bottomAd = _resolveSponsorAdImageUrl(
+    _selectBottomAd(decoded, now, configUrl),
+    configUrl,
+  );
+  final selectedMainAd = _selectMainAd(decoded, now);
+  final mainAd = selectedMainAd == null
+      ? null
+      : _resolveMainSponsorAdImageUrl(selectedMainAd, configUrl);
+  return SponsorAdConfig(bottomAd: bottomAd, mainAd: mainAd);
 }
 
 Future<SponsorAd> loadBottomSponsorAd({String configUrl = adConfigUrl}) async {
@@ -370,6 +387,10 @@ SponsorAd _selectBottomAd(
     endAt: bottomAd.endAt,
     enabled: bottomAd.enabled,
   );
+  if (!bottomAd.enabled) {
+    debugPrint('bottomAd single disabled: fallback bottomAd selected.');
+    return fallbackBottomAd;
+  }
   if (_hasSchedule(bottomAd.startAt, bottomAd.endAt) &&
       !_isAdActive(
         enabled: bottomAd.enabled,
@@ -442,6 +463,10 @@ MainSponsorAd? _selectMainAd(Map<dynamic, dynamic> decoded, DateTime now) {
     endAt: mainAd.endAt,
     enabled: mainAd.enabled,
   );
+  if (!mainAd.enabled) {
+    debugPrint('mainAd single disabled: fallback main panel will be used.');
+    return null;
+  }
   if (_hasSchedule(mainAd.startAt, mainAd.endAt) &&
       !_isAdActive(
         enabled: mainAd.enabled,

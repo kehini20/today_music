@@ -1,9 +1,108 @@
 {
-  "bottomAd": {
-    "enabled": true,
-    "title": "오늘의 한 곡",
-    "message": "오늘도 한 곡 뽑아볼까요?",
-    "imageUrl": "https://tangerine-nougat-072e10.netlify.app/ads/ad_tdm_bottom_self_001.png",
-    "linkUrl": ""
-  }
+  "mainAds": [
+    {
+      "id": "main_sales_song_001_active",
+      "slot": 1,
+      "enabled": true,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-12-17T23:59:59+09:00",
+      "title": "선착순 영업곡 샘플 001",
+      "message": "좋아하는 곡을 짧은 멘트와 함께 소개해요.",
+      "imageUrl": "ads/ad_tdm_main_self_001.png",
+      "linkUrl": "https://x.com/todaydrawmusic",
+      "song": {
+        "artist": "N.Flying",
+        "title": "환절기",
+        "memo": "엔플라잉 디지털 싱글 6월 2일 발매",
+        "tags": "오늘의한곡,TDM,영업곡,추천곡",
+        "link": "https://youtu.be/99arhk9wdNE"
+      }
+    },
+    {
+      "id": "main_sales_song_002_active",
+      "slot": 2,
+      "enabled": true,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-12-17T23:59:59+09:00",
+      "title": "선착순 영업곡 샘플 002",
+      "message": "전광판에 띄우고 싶은 추천곡과 영업 멘트를 테스트합니다.",
+      "imageUrl": "ads/ad_tdm_main_self_002.png",
+      "linkUrl": "https://x.com/todaydrawmusic",
+      "song": {
+        "artist": "ONEWE",
+        "title": "ICARUS",
+        "memo": "영업 전광판 샘플 추천곡",
+        "tags": "오늘의한곡,TDM,영업곡,추천곡",
+        "link": "https://youtu.be/BTEzUKfhWl8?si=xHP03ewVhUbMuhQZ"
+      }
+    },
+    {
+      "id": "main_sales_song_future",
+      "slot": 3,
+      "enabled": true,
+      "startAt": "2026-12-01T00:00:00+09:00",
+      "endAt": "2026-12-02T23:59:59+09:00",
+      "title": "미래 메인 전광판 샘플",
+      "message": "아직 노출되면 안 되는 미래 전광판 테스트입니다.",
+      "imageUrl": "ads/ad_tdm_main_self_002.png",
+      "linkUrl": ""
+    },
+    {
+      "id": "main_sales_song_disabled",
+      "slot": 4,
+      "enabled": false,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-06-11T23:59:59+09:00",
+      "title": "비활성 메인 전광판 샘플",
+      "message": "비활성 상태라 노출되면 안 되는 전광판 테스트입니다.",
+      "imageUrl": "ads/ad_tdm_main_self_002.png",
+      "linkUrl": ""
+    }
+  ],
+  "bottomAds": [
+    {
+      "id": "bottom_sales_board_001_active",
+      "slot": 1,
+      "enabled": true,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-12-17T23:59:59+09:00",
+      "title": "영업 전광판 샘플 001",
+      "message": "하단 전광판 샘플입니다.",
+      "imageUrl": "ads/ad_tdm_bottom_self_001.png",
+      "linkUrl": "https://x.com/todaydrawmusic"
+    },
+    {
+      "id": "bottom_sales_board_002_active",
+      "slot": 2,
+      "enabled": true,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-12-17T23:59:59+09:00",
+      "title": "영업 전광판 샘플 002",
+      "message": "하단 전광판 순환 테스트입니다.",
+      "imageUrl": "ads/ad_tdm_bottom_self_002.png",
+      "linkUrl": "https://x.com/todaydrawmusic"
+    },
+    {
+      "id": "bottom_sales_board_future",
+      "slot": 3,
+      "enabled": true,
+      "startAt": "2026-12-01T00:00:00+09:00",
+      "endAt": "2026-12-02T23:59:59+09:00",
+      "title": "미래 하단 전광판 샘플",
+      "message": "아직 노출되면 안 되는 미래 하단 전광판 테스트입니다.",
+      "imageUrl": "ads/ad_tdm_bottom_self_002.png",
+      "linkUrl": ""
+    },
+    {
+      "id": "bottom_sales_board_disabled",
+      "slot": 4,
+      "enabled": false,
+      "startAt": "2026-06-10T00:00:00+09:00",
+      "endAt": "2026-06-11T23:59:59+09:00",
+      "title": "비활성 하단 전광판 샘플",
+      "message": "비활성 상태라 노출되면 안 되는 하단 전광판 테스트입니다.",
+      "imageUrl": "ads/ad_tdm_bottom_self_002.png",
+      "linkUrl": ""
+    }
+  ]
 }

@@ -34,6 +34,17 @@ const Color tdmTextSub = Color(0xFF5F7474);
 const Color tdmBorder = Color(0xFFB7E8E1);
 const Color tdmLinkBlue = Color(0xFF3A8FC3);
 const int maxSongSetCount = 30;
+const String appDisplayVersion = 'Alpha 0.6.7';
+const String imageRecognitionHelpMessage =
+    '셋리스트 이미지를 선택하면 이미지 속 글자를 읽어 곡 목록을 분석합니다. '
+    '인식 결과가 정확하지 않을 수 있으므로 저장 전 가수명과 곡명을 확인해 주세요.';
+
+bool shouldShowImageRecognitionControls({
+  required bool isWeb,
+  required bool isSupported,
+}) {
+  return !isWeb && isSupported;
+}
 
 enum AddSongTab { individual, paste }
 
@@ -765,7 +776,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
     final candidateSongs = _randomCandidateSongs();
     if (candidateSongs.isEmpty) {
-      _showRootSnackBar('뽑기 후보가 없어요. 노래 저장소에서 랜덤 후보로 사용할 가수를 활성화해 주세요.');
+      _showRootSnackBar('뽑기 후보가 없어요. 노래 저장소에서 랜덤 후보로 사용할 가수명을 활성화해 주세요.');
       return;
     }
 
@@ -802,7 +813,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
         _selectedSongSetIds = [];
       });
       _saveRandomSelection();
-      _showRootSnackBar('가수 랜덤으로 변경했어요.');
+      _showRootSnackBar('가수명 랜덤으로 변경했어요.');
       return;
     }
 
@@ -898,9 +909,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
       return '현재 뽑기 범위: ${activeArtists.first}';
     }
     if (activeArtists.isEmpty) {
-      return '현재 뽑기 범위: 선택된 가수 없음';
+      return '현재 뽑기 범위: 선택된 가수명 없음';
     }
-    return '현재 뽑기 범위: 선택한 가수 ${activeArtists.length}팀';
+    return '현재 뽑기 범위: 선택한 가수명 ${activeArtists.length}팀';
   }
 
   bool _isArtistRandomEnabled(String artist) {
@@ -927,7 +938,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
           ),
           content: Text(
             willClearFilter
-                ? '모든 가수를 랜덤 후보에서 제외하면 오늘의 한 곡을 뽑을 수 없어요.\n'
+                ? '모든 가수명을 랜덤 후보에서 제외하면 오늘의 한 곡을 뽑을 수 없어요.\n'
                       '전부 해제할까요?'
                 : enable
                 ? '$artist 곡을 오늘의 한 곡 후보에 포함할까요?'
@@ -1235,7 +1246,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       ..writeln('# 오늘의 한 곡 내보내기')
       ..writeln('# 이 파일은 오늘의 한 곡 앱에서 다시 불러올 수 있도록 만든 곡 세트 파일입니다.')
       ..writeln('# 곡은 [곡] 단위로 구분됩니다.')
-      ..writeln('# 가수와 제목은 필수입니다.')
+      ..writeln('# 가수명과 곡명은 필수입니다.')
       ..writeln('# 메모와 태그는 비워둘 수 있습니다.')
       ..writeln('# 태그는 공백으로 구분해주세요.');
 
@@ -1247,7 +1258,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       buffer
         ..writeln()
         ..writeln('[곡]')
-        ..writeln('가수: ${_exportSingleLine(song.artist)}')
+        ..writeln('가수명: ${_exportSingleLine(song.artist)}')
         ..writeln('제목: ${_exportSingleLine(song.title)}')
         ..writeln('메모: ${_exportSingleLine(song.memo)}')
         ..writeln('태그: ${_exportSingleLine(tags)}')
@@ -1382,6 +1393,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
       switch (key) {
         case '가수':
+        case '가수명':
           currentFields['artist'] = value;
         case '제목':
           currentFields['title'] = value;
@@ -1783,7 +1795,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
         return AlertDialog(
           title: const Text('전체 삭제'),
           content: Text(
-            '이 가수의 곡을 모두 삭제할까요?\n\n'
+            '이 가수명의 곡을 모두 삭제할까요?\n\n'
             '$artist에 저장된 곡 $artistSongCount개가 모두 삭제됩니다.\n'
             '이 작업은 되돌릴 수 없습니다.',
           ),
@@ -1871,7 +1883,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       const SizedBox(height: 16),
                       if (_songStorageTab == SongStorageTab.songs) ...[
                         Text(
-                          '총 ${_songs.length}곡 · 가수 ${groupedSongs.length}팀',
+                          '총 ${_songs.length}곡 · 가수명 ${groupedSongs.length}팀',
                           style: TextStyle(
                             color: colorScheme.onSurfaceVariant,
                             fontSize: 15,
@@ -1967,8 +1979,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
                               border: Border.all(color: Colors.grey.shade300),
                             ),
                             child: const Text(
-                              '세트 랜덤 사용 중에는 가수 랜덤 설정이 잠시 적용되지 않아요.\n'
-                              '세트 선택을 모두 해제하면 다시 가수 랜덤을 사용할 수 있어요.',
+                              '세트 랜덤 사용 중에는 가수명 랜덤 설정이 잠시 적용되지 않아요.\n'
+                              '세트 선택을 모두 해제하면 다시 가수명 랜덤을 사용할 수 있어요.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: tdmTextSub,
@@ -2957,6 +2969,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                   ),
                                   const SizedBox(height: 8),
                                   TextField(
+                                    key: const ValueKey('paste-song-input'),
                                     controller: pasteController,
                                     minLines: 3,
                                     maxLines: 4,
@@ -2977,7 +2990,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  if (textOcrService.isSupported) ...[
+                                  if (shouldShowImageRecognitionControls(
+                                    isWeb: kIsWeb,
+                                    isSupported: textOcrService.isSupported,
+                                  )) ...[
                                     Wrap(
                                       spacing: 8,
                                       runSpacing: 6,
@@ -2985,6 +3001,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                           WrapCrossAlignment.center,
                                       children: [
                                         OutlinedButton.icon(
+                                          key: const ValueKey(
+                                            'image-recognition-button',
+                                          ),
                                           onPressed: isOcrRunning
                                               ? null
                                               : () => importTextFromImage(
@@ -3009,11 +3028,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                           ),
                                         ),
                                         const HelpIconButton(
+                                          key: ValueKey(
+                                            'image-recognition-help',
+                                          ),
                                           title:
                                               '\uC774\uBBF8\uC9C0\uC5D0\uC11C \uACE1 \uBD88\uB7EC\uC624\uAE30',
-                                          message:
-                                              '\uC774\uBBF8\uC9C0 \uAE00\uC790 \uC778\uC2DD\uC740 \uD55C\uAD6D\uC5B4\u00B7\uC601\uC5B4 \uC14B\uB9AC\uC2A4\uD2B8\uC5D0 \uC6B0\uC120 \uB9DE\uCDB0\uC838 \uC788\uC2B5\uB2C8\uB2E4.\n'
-                                              '\uC77C\uBD80 \uAE00\uC790\uB294 \uC798\uBABB \uC77D\uD790 \uC218 \uC788\uC73C\uB2C8 \uBD84\uC11D \uACB0\uACFC\uB97C \uD655\uC778\uD558\uACE0 \uD544\uC694\uD55C \uACE1\uBA85\uC744 \uC218\uC815\uD574 \uC8FC\uC138\uC694.',
+                                          message: imageRecognitionHelpMessage,
                                         ),
                                       ],
                                     ),
@@ -3109,6 +3129,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       candidate.status == PasteSongCandidateStatus.needsReview,
                 )
                 .length;
+            final hasUnconfirmedArtist =
+                inferredArtistController.text.trim().isEmpty &&
+                candidates.any((candidate) => candidate.song == null);
             final selectedNewSongCount = candidates
                 .asMap()
                 .entries
@@ -3253,11 +3276,15 @@ class _TodaySongPageState extends State<TodaySongPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TextField(
+                      key: const ValueKey('inferred-artist-input'),
                       controller: inferredArtistController,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: '\uCD94\uC815 \uAC00\uC218\uBA85',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
                         isDense: true,
+                        helperText: hasUnconfirmedArtist
+                            ? '가수명을 확인하지 못한 곡이 있습니다. 저장하기 전에 가수명을 입력하거나 수정해 주세요.'
+                            : null,
                       ),
                       onChanged: (_) => refreshDialog(() {}),
                     ),
@@ -3273,6 +3300,17 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       ),
                     ),
                     const SizedBox(height: 4),
+                    if (needsReviewCount > 0) ...[
+                      const Text(
+                        '확인이 필요한 곡이 있어요.',
+                        style: TextStyle(
+                          color: tdmTextSub,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
                     const Text(
                       '\uACE1\uBA85\uC774\uB098 \uC5F0\uD544 \uC544\uC774\uCF58\uC744 \uB204\uB974\uBA74 \uC218\uC815\uD560 \uC218 \uC788\uC5B4\uC694.',
                       style: TextStyle(
@@ -6090,6 +6128,20 @@ class _SettingsDialogState extends State<SettingsDialog> {
             OutlinedButton(
               onPressed: widget.onResetSongs,
               child: const Text('전체 곡 초기화'),
+            ),
+            const Divider(height: 28),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('앱 버전', style: TextStyle(fontWeight: FontWeight.w700)),
+                Flexible(
+                  child: Text(
+                    appDisplayVersion,
+                    textAlign: TextAlign.end,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

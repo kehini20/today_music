@@ -3,6 +3,62 @@ import 'package:today_music/paste_parser.dart';
 import 'package:today_music/song.dart';
 
 void main() {
+  group('artist name normalization', () {
+    test('uses the unique stored spelling for safe comparison matches', () {
+      const existingSongs = [
+        Song(artist: 'N.Flying', title: 'Blue Moon', tags: []),
+      ];
+
+      expect(resolveStoredArtistName('NFlying', existingSongs), 'N.Flying');
+      expect(resolveStoredArtistName('N Flying', existingSongs), 'N.Flying');
+      expect(resolveStoredArtistName('n.flying', existingSongs), 'N.Flying');
+    });
+
+    test('keeps inferred spelling when there is no unique stored match', () {
+      const ambiguousSongs = [
+        Song(artist: 'N.Flying', title: 'Blue Moon', tags: []),
+        Song(artist: 'NFlying', title: 'Rooftop', tags: []),
+      ];
+
+      expect(resolveStoredArtistName('ONEWE', ambiguousSongs), 'ONEWE');
+      expect(resolveStoredArtistName('N Flying', ambiguousSongs), 'N Flying');
+      expect(resolveStoredArtistName('엔플라잉', ambiguousSongs), '엔플라잉');
+    });
+
+    test('applies the stored spelling to initially inferred artists', () {
+      final analysis = parsePastedSongText(
+        text: '''
+NFlying SETLIST
+Blue Moon
+''',
+        existingSongs: const [
+          Song(artist: 'N.Flying', title: 'Rooftop', tags: []),
+        ],
+      );
+
+      expect(analysis.inferredArtist, 'N.Flying');
+      expect(analysis.candidates.single.song?.artist, 'N.Flying');
+    });
+
+    test('keeps a user-edited inferred artist during candidate rebuild', () {
+      final candidates = buildPasteSongCandidates(
+        drafts: const [
+          PasteSongDraft(
+            sourceLine: 'Blue Moon',
+            title: 'Blue Moon',
+            usesInferredArtist: true,
+          ),
+        ],
+        inferredArtist: 'N Flying',
+        existingSongs: const [
+          Song(artist: 'N.Flying', title: 'Rooftop', tags: []),
+        ],
+      );
+
+      expect(candidates.single.song?.artist, 'N Flying');
+    });
+  });
+
   group('parsePastedSongText', () {
     test('preserves numeric song titles and strips explicit list numbers', () {
       final analysis = parsePastedSongText(

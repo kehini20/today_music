@@ -96,6 +96,28 @@ List<PasteSongCandidate> buildPasteSongCandidates({
   ).buildCandidates(drafts, inferredArtist);
 }
 
+String normalizeArtistComparisonKey(String value) {
+  return value.trim().toLowerCase().replaceAll(RegExp(r'[\s._·•]+'), '');
+}
+
+String resolveStoredArtistName(
+  String inferredArtist,
+  Iterable<Song> existingSongs,
+) {
+  final inferred = inferredArtist.trim();
+  final comparisonKey = normalizeArtistComparisonKey(inferred);
+  if (comparisonKey.isEmpty) {
+    return inferred;
+  }
+
+  final matches = existingSongs
+      .map((song) => song.artist.trim())
+      .where((artist) => artist.isNotEmpty)
+      .where((artist) => normalizeArtistComparisonKey(artist) == comparisonKey)
+      .toSet();
+  return matches.length == 1 ? matches.single : inferred;
+}
+
 class _PasteSongParser {
   final List<Song> existingSongs;
   final Iterable<Song> knownSongs;
@@ -118,11 +140,15 @@ class _PasteSongParser {
     final tableLogoArtist = isStructuredTable
         ? _artistFromStructuredTableEvidence(originalLines)
         : '';
-    final inferredArtist =
+    final rawInferredArtist =
         explicitSetlistHeader?.artist ??
         (tableLogoArtist.isNotEmpty ? tableLogoArtist : null) ??
         concertArtistHeader?.artist ??
         _inferPastedArtist(text);
+    final inferredArtist = resolveStoredArtistName(
+      rawInferredArtist,
+      existingSongs,
+    );
     var contentStartIndex = 0;
     if (explicitSetlistHeader != null) {
       contentStartIndex = explicitSetlistHeader.index + 1;
