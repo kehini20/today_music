@@ -1,11 +1,55 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+val isReleaseBuildRequested =
+    gradle.startParameter.taskNames.any { taskName ->
+        taskName.contains("release", ignoreCase = true)
+    }
+
+if (keystorePropertiesFile.exists()) {
+    FileInputStream(keystorePropertiesFile).use(keystoreProperties::load)
+}
+
+fun requiredKeystoreProperty(name: String): String {
+    return keystoreProperties.getProperty(name)?.takeIf { it.isNotBlank() }
+        ?: throw GradleException(
+            "Missing '$name' in android/key.properties. " +
+                "Copy android/key.properties.example and provide the local release signing values.",
+        )
+}
+
+if (isReleaseBuildRequested && !keystorePropertiesFile.exists()) {
+    throw GradleException(
+        "Release signing is not configured. " +
+            "Create android/key.properties from android/key.properties.example. " +
+            "The release build will not fall back to the debug keystore.",
+    )
+}
+
+if (isReleaseBuildRequested) {
+    val releaseStoreFile =
+        rootProject.file(requiredKeystoreProperty("storeFile"))
+    requiredKeystoreProperty("storePassword")
+    requiredKeystoreProperty("keyAlias")
+    requiredKeystoreProperty("keyPassword")
+    if (!releaseStoreFile.isFile) {
+        throw GradleException(
+            "Release keystore was not found at '${releaseStoreFile.absolutePath}'. " +
+                "Check 'storeFile' in android/key.properties.",
+        )
+    }
+}
+
 android {
-    namespace = "com.example.today_music"
+    namespace = "com.todaydrawmusic.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,8 +59,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.today_music"
+        applicationId = "com.todaydrawmusic.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -25,11 +68,27 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile =
+                    keystoreProperties.getProperty("storeFile")
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(rootProject::file)
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

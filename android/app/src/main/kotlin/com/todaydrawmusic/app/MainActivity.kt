@@ -1,4 +1,4 @@
-package com.example.today_music
+package com.todaydrawmusic.app
 
 import io.flutter.embedding.android.FlutterActivity
 

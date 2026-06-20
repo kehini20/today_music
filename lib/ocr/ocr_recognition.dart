@@ -1,5 +1,9 @@
 enum OcrRecognitionMode { auto, korean, japanese }
 
+class OcrImageLoadException implements Exception {
+  const OcrImageLoadException();
+}
+
 extension OcrRecognitionModeLabel on OcrRecognitionMode {
   String get storageValue => name;
 

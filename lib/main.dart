@@ -34,7 +34,7 @@ const Color tdmTextSub = Color(0xFF5F7474);
 const Color tdmBorder = Color(0xFFB7E8E1);
 const Color tdmLinkBlue = Color(0xFF3A8FC3);
 const int maxSongSetCount = 30;
-const String appDisplayVersion = 'Alpha 0.6.7';
+const String appDisplayVersion = 'Alpha 0.7.0';
 const String imageRecognitionHelpMessage =
     '셋리스트 이미지를 선택하면 이미지 속 글자를 읽어 곡 목록을 분석합니다. '
     '인식 결과가 정확하지 않을 수 있으므로 저장 전 가수명과 곡명을 확인해 주세요.';
@@ -2587,9 +2587,18 @@ class _TodaySongPageState extends State<TodaySongPage> {
     String? artistErrorText;
     String? titleErrorText;
     var isOcrRunning = false;
+    String? ocrStatusMessage;
+    var isOcrStatusError = false;
     List<String?> ocrTitleAlternatives = const [];
 
+    void logOcrUi(String stage, String details) {
+      if (kDebugMode) {
+        debugPrint('[TDM OCR UI] $stage $details');
+      }
+    }
+
     void disposeControllers() {
+      logOcrUi('dialog-dispose', 'pasteLength=${pasteController.text.length}');
       pasteController.dispose();
       pasteScrollController.dispose();
       titleController.dispose();
@@ -2702,6 +2711,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
               OcrRecognitionMode source,
             ) {
               final text = result.textForSource(source).trim();
+              logOcrUi(
+                'controller-apply-start',
+                'source=${source.name} rawLength=${text.length} '
+                    'beforeLength=${pasteController.text.length} '
+                    'dialogMounted=${dialogContext.mounted}',
+              );
               pasteController.text = text;
               pasteController.selection = TextSelection.collapsed(
                 offset: pasteController.text.length,
@@ -2710,6 +2725,17 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 primaryText: text,
                 alternateText: oppositeOcrText(result, source),
               );
+              logOcrUi(
+                'controller-apply-complete',
+                'controllerLength=${pasteController.text.length}',
+              );
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                logOcrUi(
+                  'controller-post-frame',
+                  'controllerLength=${pasteController.text.length} '
+                      'dialogMounted=${dialogContext.mounted}',
+                );
+              });
             }
 
             Future<bool> confirmReplacingText(String message) async {
@@ -2770,25 +2796,57 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
               refreshDialog(() {
                 isOcrRunning = true;
+                ocrStatusMessage = '이미지를 불러오고 있습니다.';
+                isOcrStatusError = false;
               });
+              logOcrUi(
+                'picker-start',
+                'dialogMounted=${dialogContext.mounted}',
+              );
 
               try {
                 final selectedImage = await imagePicker.pickImage(
                   source: ImageSource.gallery,
                 );
                 if (selectedImage == null) {
+                  logOcrUi('picker-cancelled', 'selected=false');
+                  if (dialogContext.mounted) {
+                    refreshDialog(() {
+                      ocrStatusMessage = null;
+                    });
+                  }
                   return;
                 }
+                logOcrUi(
+                  'picker-complete',
+                  'selected=true pathPresent=${selectedImage.path.isNotEmpty} '
+                      'dialogMounted=${dialogContext.mounted}',
+                );
 
+                logOcrUi('recognition-start', 'mode=auto');
                 final recognition = await textOcrService.recognizeText(
                   selectedImage.path,
                   mode: OcrRecognitionMode.auto,
+                );
+                logOcrUi(
+                  'recognition-complete',
+                  'koreanLength=${recognition.koreanText.length} '
+                      'japaneseLength=${recognition.japaneseText.length} '
+                      'selectedLength=${recognition.selectedText.length}',
                 );
                 final sourceToUse = sourceForPreferredResult(
                   recognition,
                   preferredSource,
                 );
                 if (recognition.textForSource(sourceToUse).trim().isEmpty) {
+                  logOcrUi('recognition-empty', 'source=${sourceToUse.name}');
+                  if (dialogContext.mounted) {
+                    refreshDialog(() {
+                      ocrStatusMessage =
+                          '이미지에서 글자를 인식하지 못했습니다. 다른 이미지로 다시 시도해 주세요.';
+                      isOcrStatusError = true;
+                    });
+                  }
                   _showRootSnackBar(
                     '\uC774\uBBF8\uC9C0\uC5D0\uC11C \uAE00\uC790\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.',
                   );
@@ -2796,6 +2854,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 }
 
                 if (!dialogContext.mounted) {
+                  logOcrUi(
+                    'controller-apply-skipped',
+                    'reason=dialog-unmounted',
+                  );
                   return;
                 }
 
@@ -2809,26 +2871,63 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 }
 
                 if (!dialogContext.mounted) {
+                  logOcrUi(
+                    'controller-apply-skipped',
+                    'reason=dialog-unmounted-after-confirm',
+                  );
                   return;
                 }
 
+                logOcrUi('dialog-refresh-start', 'source=${sourceToUse.name}');
                 refreshDialog(() {
                   applyOcrText(recognition, sourceToUse);
+                  ocrStatusMessage =
+                      '글자 ${pasteController.text.length}자를 인식했습니다.';
+                  isOcrStatusError = false;
                 });
+                logOcrUi(
+                  'dialog-refresh-complete',
+                  'controllerLength=${pasteController.text.length}',
+                );
 
                 hideKeyboardAndRevealAnalyzeButton();
+              } on OcrImageLoadException {
+                logOcrUi('image-load-error', 'selected-image-unavailable');
+                if (dialogContext.mounted) {
+                  refreshDialog(() {
+                    ocrStatusMessage = '이미지를 불러오지 못했습니다. 다른 이미지로 다시 시도해 주세요.';
+                    isOcrStatusError = true;
+                  });
+                }
               } on OcrUnsupportedException {
+                logOcrUi(
+                  'unsupported',
+                  'platform=${defaultTargetPlatform.name}',
+                );
                 _showRootSnackBar(
                   '\uC774\uBBF8\uC9C0 \uAE00\uC790 \uC778\uC2DD\uC740 \uD604\uC7AC Android \uC571\uC5D0\uC11C\uB9CC \uC9C0\uC6D0\uD569\uB2C8\uB2E4.',
                 );
               } catch (error, stackTrace) {
-                if (kDebugMode) {
-                  debugPrint('OCR failed: $error\n$stackTrace');
+                logOcrUi(
+                  'error',
+                  'type=${error.runtimeType} error=$error\n$stackTrace',
+                );
+                if (dialogContext.mounted) {
+                  refreshDialog(() {
+                    ocrStatusMessage =
+                        '이미지 글자 인식 중 오류가 발생했습니다. 다른 이미지로 다시 시도해 주세요.';
+                    isOcrStatusError = true;
+                  });
                 }
                 _showRootSnackBar(
                   '\uC774\uBBF8\uC9C0\uB97C \uC77D\uB294 \uC911 \uBB38\uC81C\uAC00 \uBC1C\uC0DD\uD588\uC5B4\uC694.',
                 );
               } finally {
+                logOcrUi(
+                  'complete',
+                  'dialogMounted=${dialogContext.mounted} '
+                      'controllerLength=${pasteController.text.length}',
+                );
                 if (dialogContext.mounted) {
                   refreshDialog(() {
                     isOcrRunning = false;
@@ -3038,6 +3137,24 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                       ],
                                     ),
                                     const SizedBox(height: 8),
+                                    if (ocrStatusMessage != null) ...[
+                                      Text(
+                                        ocrStatusMessage!,
+                                        key: const ValueKey(
+                                          'image-recognition-status',
+                                        ),
+                                        style: TextStyle(
+                                          color: isOcrStatusError
+                                              ? Theme.of(
+                                                  context,
+                                                ).colorScheme.error
+                                              : tdmTextSub,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
                                   ],
                                   OutlinedButton(
                                     onPressed: () {

@@ -63,9 +63,10 @@ class TextOcrService {
       );
     } catch (error, stackTrace) {
       koreanError = error;
-      if (kDebugMode) {
-        debugPrint('Korean OCR failed: $error\n$stackTrace');
-      }
+      _logOcr(
+        'script-error',
+        'script=korean error=${error.runtimeType}\n$stackTrace',
+      );
     }
 
     try {
@@ -75,20 +76,26 @@ class TextOcrService {
       );
     } catch (error, stackTrace) {
       japaneseError = error;
-      if (kDebugMode) {
-        debugPrint('Japanese OCR failed: $error\n$stackTrace');
-      }
+      _logOcr(
+        'script-error',
+        'script=japanese error=${error.runtimeType}\n$stackTrace',
+      );
     }
 
     if (koreanText.trim().isEmpty && japaneseText.trim().isEmpty) {
       if (koreanError != null) {
-        throw koreanError;
+        Error.throwWithStackTrace(koreanError, StackTrace.current);
       }
       if (japaneseError != null) {
-        throw japaneseError;
+        Error.throwWithStackTrace(japaneseError, StackTrace.current);
       }
     }
 
+    _logOcr(
+      'auto-complete',
+      'koreanLength=${koreanText.length} '
+          'japaneseLength=${japaneseText.length}',
+    );
     return buildAutoOcrRecognitionResult(
       koreanText: koreanText,
       japaneseText: japaneseText,
@@ -99,13 +106,45 @@ class TextOcrService {
     String imagePath,
     TextRecognitionScript script,
   ) async {
+    final file = File(imagePath);
+    final fileExists = await file.exists();
+    final fileSize = fileExists ? await file.length() : 0;
+    _logOcr(
+      'file-check',
+      'script=${script.name} exists=$fileExists size=$fileSize',
+    );
+    if (!fileExists || fileSize == 0) {
+      throw const OcrImageLoadException();
+    }
+    _logOcr('recognizer-create', 'script=${script.name}');
     final recognizer = TextRecognizer(script: script);
     try {
+      _logOcr('input-image-create', 'script=${script.name}');
       final image = InputImage.fromFilePath(imagePath);
+      _logOcr('process-start', 'script=${script.name}');
       final recognizedText = await recognizer.processImage(image);
-      return _normalizeRecognizedText(recognizedText.text);
+      final rawText = recognizedText.text;
+      _logOcr(
+        'raw-result',
+        'script=${script.name} length=${rawText.length} '
+            'lines=${rawText.isEmpty ? 0 : rawText.split('\n').length} '
+            'preview=${_safePreview(rawText)}',
+      );
+      final normalized = _normalizeRecognizedText(rawText);
+      _logOcr(
+        'process-complete',
+        'script=${script.name} length=${normalized.length}',
+      );
+      return normalized;
+    } catch (error, stackTrace) {
+      _logOcr(
+        'process-error',
+        'script=${script.name} error=${error.runtimeType}\n$stackTrace',
+      );
+      rethrow;
     } finally {
       await recognizer.close();
+      _logOcr('recognizer-close', 'script=${script.name}');
     }
   }
 
@@ -119,4 +158,15 @@ class TextOcrService {
         .replaceAll(RegExp(r'\n{3,}'), '\n\n')
         .trim();
   }
+}
+
+void _logOcr(String stage, String details) {
+  if (kDebugMode) {
+    debugPrint('[TDM OCR] $stage $details');
+  }
+}
+
+String _safePreview(String text) {
+  final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return String.fromCharCodes(normalized.runes.take(120));
 }

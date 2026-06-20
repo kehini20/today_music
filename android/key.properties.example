@@ -1,0 +1,6 @@
+# Copy this file to android/key.properties and keep the real file private.
+# Relative storeFile paths are resolved from the android/ directory.
+storePassword=REPLACE_WITH_LOCAL_SECRET
+keyPassword=REPLACE_WITH_LOCAL_SECRET
+keyAlias=todaydrawmusic-upload
+storeFile=REPLACE_WITH_LOCAL_KEYSTORE_PATH
