@@ -33,7 +33,7 @@ class BackupValidator {
         '${document.backupFormatVersion}.',
       );
     }
-    if (document.platform != 'android') {
+    if (!const {'android', 'web'}.contains(document.platform)) {
       errors.add('Unsupported backup platform: ${document.platform}.');
     }
 

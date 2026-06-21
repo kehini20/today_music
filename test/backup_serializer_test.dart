@@ -121,6 +121,20 @@ void main() {
       expect(serializer.restore(document).songs, isEmpty);
     });
 
+    test('keeps the same v1 schema for a web file backup', () {
+      final document = serializer.createDocument(
+        source: source(),
+        appVersion: '0.7.2',
+        createdAt: DateTime.parse('2026-06-21T17:00:00+09:00'),
+        platform: 'web',
+      );
+
+      final decoded = serializer.decode(serializer.encode(document));
+
+      expect(decoded.backupFormatVersion, 1);
+      expect(decoded.platform, 'web');
+    });
+
     test('handles a large backup and computes summary counts', () {
       final songs = List<Song>.generate(
         2000,

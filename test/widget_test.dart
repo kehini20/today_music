@@ -110,6 +110,63 @@ void main() {
     expect(find.text(appDisplayVersion), findsOneWidget);
   });
 
+  testWidgets('settings exposes app backup and reset actions in safe order', (
+    WidgetTester tester,
+  ) async {
+    await pumpTodayMusicApp(tester);
+
+    await tester.tap(find.text('설정'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('데이터 관리'), findsOneWidget);
+    expect(find.text('앱 백업 내보내기'), findsOneWidget);
+    expect(find.text('앱 백업 불러오기'), findsOneWidget);
+    expect(find.text('앱 초기화'), findsOneWidget);
+    expect(find.textContaining('곡, 세트, 좋아요, 공유 문구'), findsOneWidget);
+
+    final exportTop = tester.getTopLeft(find.text('앱 백업 내보내기')).dy;
+    final importTop = tester.getTopLeft(find.text('앱 백업 불러오기')).dy;
+    final resetTop = tester.getTopLeft(find.text('앱 초기화')).dy;
+    expect(exportTop, lessThan(importTop));
+    expect(importTop, lessThan(resetTop));
+
+    await tester.tap(find.text('앱 초기화'));
+    await tester.pumpAndSettle();
+    expect(find.text('앱을 초기화할까요?'), findsOneWidget);
+    expect(find.textContaining('초기화 전 앱 백업을 내보내는 것을 권장합니다.'), findsOneWidget);
+  });
+
+  test('update candidate uses a distinct blue status color', () {
+    expect(updateAvailableColor, const Color(0xFF5B8DEF));
+    expect(updateAvailableColor, isNot(tdmPrimary));
+    expect(updateAvailableColor, isNot(tdmTextSub));
+  });
+
+  test('app backup filename includes local date and time', () {
+    expect(
+      buildAppBackupFileBaseName(DateTime(2026, 6, 21, 17)),
+      'today_music_backup_2026-06-21_1700',
+    );
+  });
+
+  test('app reset removes every persisted app data key', () async {
+    SharedPreferences.setMockInitialValues({
+      'tdm_alpha_songs': '[]',
+      'tdm_song_sets': '[]',
+      'tdm_random_mode': 'songSets',
+      'tdm_selected_song_set_ids': <String>['set-1'],
+      'sample_prompt_checked': true,
+      'tdm_default_share_message': '공유 문구',
+      'tdm_disabled_random_artists': <String>['KEY'],
+      'tdm_last_add_song_tab': 'paste',
+    });
+
+    await SongStorage.resetAllAppData();
+    final preferences = await SharedPreferences.getInstance();
+
+    expect(preferences.getKeys(), isEmpty);
+  });
+
   testWidgets('missing artist and review candidates show gentle guidance', (
     WidgetTester tester,
   ) async {

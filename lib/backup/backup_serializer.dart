@@ -13,6 +13,7 @@ class BackupSerializer {
     required BackupSourceSnapshot source,
     required String appVersion,
     required DateTime createdAt,
+    String platform = 'android',
   }) {
     final backupSongs = <BackupSong>[];
     final songIdsByKey = <String, String>{};
@@ -61,7 +62,7 @@ class BackupSerializer {
       backupFormatVersion: currentBackupFormatVersion,
       appVersion: appVersion,
       createdAt: createdAt,
-      platform: 'android',
+      platform: platform,
       summary: BackupSummary(
         songCount: backupSongs.length,
         setCount: backupSets.length,

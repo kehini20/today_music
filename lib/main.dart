@@ -11,6 +11,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'backup/backup_models.dart';
+import 'backup/backup_serializer.dart';
 import 'sample_songs.dart';
 import 'ocr/text_ocr_service.dart';
 import 'paste_parser.dart';
@@ -34,8 +36,10 @@ const Color tdmTextMain = Color(0xFF173A3A);
 const Color tdmTextSub = Color(0xFF5F7474);
 const Color tdmBorder = Color(0xFFB7E8E1);
 const Color tdmLinkBlue = Color(0xFF3A8FC3);
+const Color updateAvailableColor = Color(0xFF5B8DEF);
 const int maxSongSetCount = 30;
-const String appDisplayVersion = 'Alpha 0.7.1';
+const String appSemanticVersion = '0.7.2';
+const String appDisplayVersion = 'Alpha 0.7.2';
 const String imageRecognitionHelpMessage =
     '셋리스트 이미지를 선택하면 이미지 속 글자를 읽어 곡 목록을 분석합니다. '
     '인식 결과가 정확하지 않을 수 있으므로 저장 전 가수명과 곡명을 확인해 주세요.';
@@ -45,6 +49,14 @@ bool shouldShowImageRecognitionControls({
   required bool isSupported,
 }) {
   return !isWeb && isSupported;
+}
+
+String buildAppBackupFileBaseName(DateTime timestamp) {
+  String twoDigits(int value) => value.toString().padLeft(2, '0');
+  return 'today_music_backup_'
+      '${timestamp.year}-${twoDigits(timestamp.month)}-'
+      '${twoDigits(timestamp.day)}_'
+      '${twoDigits(timestamp.hour)}${twoDigits(timestamp.minute)}';
 }
 
 enum AddSongTab { individual, paste }
@@ -256,6 +268,20 @@ class SongStorage {
     } catch (_) {
       // Add-song tab persistence should never crash the app.
     }
+  }
+
+  static Future<void> resetAllAppData() async {
+    final preferences = await SharedPreferences.getInstance();
+    await Future.wait([
+      preferences.remove(_songsKey),
+      preferences.remove(_songSetsKey),
+      preferences.remove(_randomModeKey),
+      preferences.remove(_selectedSongSetIdsKey),
+      preferences.remove(_samplePromptCheckedKey),
+      preferences.remove(_defaultShareMessageKey),
+      preferences.remove(_disabledRandomArtistsKey),
+      preferences.remove(_lastAddSongTabKey),
+    ]);
   }
 }
 
@@ -1138,6 +1164,172 @@ class _TodaySongPageState extends State<TodaySongPage> {
     await _saveExportFileToPhone(songs: _songs);
   }
 
+  BackupSourceSnapshot _currentBackupSource() {
+    return BackupSourceSnapshot(
+      songs: List<Song>.of(_songs),
+      sets: _songSets
+          .map(
+            (set) => BackupSourceSet(
+              id: set.id,
+              name: set.name,
+              songs: List<Song>.of(set.songs),
+            ),
+          )
+          .toList(),
+      disabledRandomArtists: Set<String>.of(_disabledRandomArtists),
+      selectedSetIds: List<String>.of(_selectedSongSetIds),
+      defaultShareMessage: _defaultShareMessage,
+      randomMode: _randomMode.name,
+    );
+  }
+
+  Future<void> _exportAppBackup() async {
+    try {
+      const serializer = BackupSerializer();
+      final now = DateTime.now();
+      final document = serializer.createDocument(
+        source: _currentBackupSource(),
+        appVersion: appSemanticVersion,
+        createdAt: now,
+        platform: kIsWeb ? 'web' : 'android',
+      );
+      final jsonText = serializer.encode(document);
+      final savedPath = await FileSaver.instance.saveAs(
+        name: buildAppBackupFileBaseName(now),
+        bytes: Uint8List.fromList(utf8.encode(jsonText)),
+        fileExtension: 'json',
+        mimeType: MimeType.json,
+      );
+
+      if (savedPath == null || savedPath.trim().isEmpty) {
+        _showRootSnackBar('앱 백업을 내보내지 못했어요. 다시 시도해 주세요.');
+        return;
+      }
+      _showRootSnackBar('앱 백업을 내보냈어요.');
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('App backup export failed: $error\n$stackTrace');
+      }
+      _showRootSnackBar('앱 백업을 내보내지 못했어요. 다시 시도해 주세요.');
+    }
+  }
+
+  Future<void> _importAppBackup() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final bytes = result.files.single.bytes;
+      if (bytes == null) {
+        _showRootSnackBar('백업 파일을 불러오지 못했어요. 파일을 확인해 주세요.');
+        return;
+      }
+
+      const serializer = BackupSerializer();
+      final document = serializer.decode(utf8.decode(bytes));
+      final restored = serializer.restore(document);
+      if (!mounted) {
+        return;
+      }
+
+      final shouldRestore = await showDialog<bool>(
+        context: context,
+        builder: (confirmContext) {
+          return AlertDialog(
+            title: const Text('앱 백업을 불러올까요?'),
+            content: Text(
+              '앱 백업을 불러오면 현재 앱 데이터가 백업 파일 내용으로 바뀝니다.\n'
+              '계속할까요?\n\n'
+              '곡 ${document.summary.songCount}곡 · '
+              '세트 ${document.summary.setCount}개 · '
+              '좋아요 ${document.summary.favoriteCount}곡',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(confirmContext).pop(false),
+                child: const Text('취소'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(confirmContext).pop(true),
+                child: const Text('백업 불러오기'),
+              ),
+            ],
+          );
+        },
+      );
+      if (shouldRestore != true || !mounted) {
+        return;
+      }
+
+      await _applyBackupRestore(restored);
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop();
+      _showRootSnackBar(
+        '앱 백업을 불러왔어요. '
+        '곡 ${restored.songs.length}곡, 세트 ${restored.sets.length}개를 복원했습니다.',
+      );
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('App backup import failed: $error\n$stackTrace');
+      }
+      _showRootSnackBar('이 파일은 오늘의 한 곡 앱 백업 파일이 아니거나 손상되었어요.');
+    }
+  }
+
+  Future<void> _applyBackupRestore(BackupRestoreSnapshot restored) async {
+    final restoredSets = restored.sets
+        .map((set) => SongSet(id: set.id, name: set.name, songs: set.songs))
+        .toList();
+    final restoredRandomMode =
+        restored.randomMode == RandomMode.songSets.name &&
+            restored.selectedSetIds.isNotEmpty
+        ? RandomMode.songSets
+        : RandomMode.artistRandom;
+
+    setState(() {
+      _songs = List<Song>.of(restored.songs);
+      _songSets = _songSetsSyncedWithSongs(restoredSets, _songs);
+      final existingSetIds = _songSets.map((set) => set.id).toSet();
+      _selectedSongSetIds = restored.selectedSetIds
+          .where(existingSetIds.contains)
+          .toList();
+      _randomMode =
+          restoredRandomMode == RandomMode.songSets &&
+              _selectedSongSetIds.isNotEmpty
+          ? RandomMode.songSets
+          : RandomMode.artistRandom;
+      final existingArtists = songsByArtist(_songs).keys.toSet();
+      _disabledRandomArtists = restored.disabledRandomArtists
+          .where(existingArtists.contains)
+          .toSet();
+      _defaultShareMessage = restored.defaultShareMessage;
+      _selectedSong = null;
+      _lastResultSong = null;
+      _isSponsorPick = false;
+      _resultSongSetName = null;
+      _shareTextController.clear();
+      _includeTodayTag = true;
+      _includeSongLink = true;
+    });
+
+    await Future.wait([
+      SongStorage.saveSongs(_songs),
+      SongStorage.saveSongSets(_songSets),
+      SongStorage.saveRandomMode(_randomMode),
+      SongStorage.saveSelectedSongSetIds(_selectedSongSetIds),
+      SongStorage.saveDisabledRandomArtists(_disabledRandomArtists),
+      SongStorage.saveDefaultShareMessage(_defaultShareMessage),
+    ]);
+  }
+
   Future<void> _exportArtistSongs(String artist) async {
     final artistSongs = _songs.where((song) => song.artist == artist).toList();
     if (artistSongs.isEmpty) {
@@ -1448,7 +1640,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
           },
           onContactEmail: _openContactEmail,
           onOpenOfficialX: _openOfficialX,
-          onResetSongs: _showResetSongsDialog,
+          onExportBackup: _exportAppBackup,
+          onImportBackup: _importAppBackup,
+          onResetApp: _showResetAppDialog,
         );
       },
     );
@@ -1478,17 +1672,16 @@ class _TodaySongPageState extends State<TodaySongPage> {
     await _openSponsorLink('https://x.com/todaydrawmusic');
   }
 
-  void _showResetSongsDialog() {
+  void _showResetAppDialog() {
     showDialog<void>(
       context: context,
       builder: (confirmContext) {
         return AlertDialog(
-          title: const Text('전체 곡을 초기화할까요?'),
+          title: const Text('앱을 초기화할까요?'),
           content: const Text(
-            '저장된 곡 목록이 모두 삭제됩니다.\n'
-            '이 작업은 되돌릴 수 없습니다.\n\n'
-            '곡 목록을 보관하려면\n'
-            '초기화 전에 TXT로 내보내기 해주세요.',
+            '앱을 초기화하면 모든 곡, 세트, 좋아요와 설정이 삭제됩니다.\n'
+            '초기화 전 앱 백업을 내보내는 것을 권장합니다.\n'
+            '계속할까요?',
           ),
           actions: [
             TextButton(
@@ -1498,7 +1691,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
             FilledButton(
               onPressed: () {
                 Navigator.of(confirmContext).pop();
-                _resetAllSongs();
+                _resetApp();
               },
               child: const Text('초기화'),
             ),
@@ -1508,7 +1701,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     );
   }
 
-  void _resetAllSongs() {
+  Future<void> _resetApp() async {
     setState(() {
       _songs = [];
       _selectedSong = null;
@@ -1519,16 +1712,14 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _songSets.clear();
       _randomMode = RandomMode.artistRandom;
       _selectedSongSetIds.clear();
+      _defaultShareMessage = '';
+      _lastAddSongTab = AddSongTab.individual;
       _shareTextController.clear();
       _includeTodayTag = true;
       _includeSongLink = true;
     });
-    SongStorage.setSamplePromptChecked(true);
-    _saveSongs();
-    _saveDisabledRandomArtists();
-    _saveSongSets();
-    _saveRandomSelection();
-    _showRootSnackBar('저장된 곡 목록을 초기화했어요.');
+    await SongStorage.resetAllAppData();
+    _showRootSnackBar('앱 데이터를 초기화했어요.');
   }
 
   void _addSong(Song song) {
@@ -2483,9 +2674,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 OutlinedButton(
                   onPressed: () {
                     Navigator.of(menuContext).pop();
-                    _runAfterFrame(_showResetSongsDialog);
+                    _runAfterFrame(_showResetAppDialog);
                   },
-                  child: const Text('전체 초기화'),
+                  child: const Text('앱 초기화'),
                 ),
               ],
             ),
@@ -3605,7 +3796,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       case PasteSongCandidateStatus.newSong:
         return colorScheme.primary;
       case PasteSongCandidateStatus.updateAvailable:
-        return colorScheme.tertiary;
+        return updateAvailableColor;
       case PasteSongCandidateStatus.existing:
         return colorScheme.onSurfaceVariant;
       case PasteSongCandidateStatus.needsReview:
@@ -6205,7 +6396,9 @@ class SettingsDialog extends StatefulWidget {
   final ValueChanged<String> onSave;
   final VoidCallback onContactEmail;
   final VoidCallback onOpenOfficialX;
-  final VoidCallback onResetSongs;
+  final Future<void> Function() onExportBackup;
+  final Future<void> Function() onImportBackup;
+  final VoidCallback onResetApp;
 
   const SettingsDialog({
     super.key,
@@ -6213,7 +6406,9 @@ class SettingsDialog extends StatefulWidget {
     required this.onSave,
     required this.onContactEmail,
     required this.onOpenOfficialX,
-    required this.onResetSongs,
+    required this.onExportBackup,
+    required this.onImportBackup,
+    required this.onResetApp,
   });
 
   @override
@@ -6222,6 +6417,7 @@ class SettingsDialog extends StatefulWidget {
 
 class _SettingsDialogState extends State<SettingsDialog> {
   late final TextEditingController _defaultMessageController;
+  bool _isManagingData = false;
 
   @override
   void initState() {
@@ -6240,6 +6436,24 @@ class _SettingsDialogState extends State<SettingsDialog> {
   void _save() {
     widget.onSave(_defaultMessageController.text);
     Navigator.of(context).pop();
+  }
+
+  Future<void> _runDataAction(Future<void> Function() action) async {
+    if (_isManagingData) {
+      return;
+    }
+    setState(() {
+      _isManagingData = true;
+    });
+    try {
+      await action();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isManagingData = false;
+        });
+      }
+    }
   }
 
   @override
@@ -6279,9 +6493,40 @@ class _SettingsDialogState extends State<SettingsDialog> {
               child: const Text('X @todaydrawmusic'),
             ),
             const Divider(height: 28),
+            Text('데이터 관리', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 6),
+            Text(
+              '곡, 세트, 좋아요, 공유 문구와 앱 설정을 파일로 저장합니다.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
             OutlinedButton(
-              onPressed: widget.onResetSongs,
-              child: const Text('전체 곡 초기화'),
+              onPressed: _isManagingData
+                  ? null
+                  : () => _runDataAction(widget.onExportBackup),
+              child: const Text('앱 백업 내보내기'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '백업 파일로 앱 데이터를 복원합니다. 현재 데이터는 바뀔 수 있습니다.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: _isManagingData
+                  ? null
+                  : () => _runDataAction(widget.onImportBackup),
+              child: const Text('앱 백업 불러오기'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '모든 곡, 세트, 좋아요와 앱 설정을 삭제합니다.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: _isManagingData ? null : widget.onResetApp,
+              child: const Text('앱 초기화'),
             ),
             const Divider(height: 28),
             const Row(
