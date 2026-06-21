@@ -145,8 +145,35 @@ void main() {
   test('app backup filename includes local date and time', () {
     expect(
       buildAppBackupFileBaseName(DateTime(2026, 6, 21, 17)),
-      'today_music_backup_2026-06-21_1700',
+      'tdm_app_backup_2026-06-21_1700',
     );
+  });
+
+  test('export filenames use short safe tdm prefixes', () {
+    final timestamp = DateTime(2026, 6, 22, 1, 45);
+
+    expect(buildExportTimestamp(timestamp), '2026-06-22_0145');
+    expect(
+      buildSongsExportFileBaseName(timestamp),
+      'tdm_songs_2026-06-22_0145',
+    );
+    expect(
+      buildSongsExportFileBaseName(timestamp, artist: 'N.Flying'),
+      'tdm_NFlying_2026-06-22_0145',
+    );
+    expect(
+      buildSongsExportFileBaseName(timestamp, artist: '가수/이름:테스트'),
+      'tdm_가수이름테스트_2026-06-22_0145',
+    );
+    expect(buildSetsExportFileBaseName(timestamp), 'tdm_sets_2026-06-22_0145');
+    expect(safeExportFileNamePart(r'\/:*?"<>|.'), 'artist');
+  });
+
+  test('file import guidance distinguishes TXT and app backup JSON', () {
+    expect(songTxtImportGuidance, contains('곡 목록 TXT 파일'));
+    expect(songTxtImportGuidance, contains('앱 전체 백업 JSON 파일'));
+    expect(appBackupImportGuidance, contains('앱 전체 백업 JSON 파일'));
+    expect(appBackupImportGuidance, contains('곡 목록 TXT 파일'));
   });
 
   test('app reset removes every persisted app data key', () async {
@@ -366,6 +393,216 @@ void main() {
       );
     },
   );
+
+  testWidgets('artist song rows open the common card only from the title', (
+    WidgetTester tester,
+  ) async {
+    const songsJson =
+        '[{"artist":"N.Flying","title":"Linked","tags":[],"link":"https://example.com"},'
+        '{"artist":"N.Flying","title":"Search","tags":[],"link":""}]';
+    const setsJson =
+        '[{"id":"set-1","name":"공연 세트","songs":['
+        '{"artist":"N.Flying","title":"Linked","tags":[],"link":"https://example.com"}'
+        ']}]';
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {
+        'tdm_alpha_songs': songsJson,
+        'tdm_song_sets': setsJson,
+        'sample_prompt_checked': true,
+      },
+    );
+
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('N.Flying'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('이 곡 추천하기'), findsNWidgets(2));
+    expect(find.byTooltip('링크 열기'), findsNothing);
+    expect(find.byTooltip('링크 검색'), findsNothing);
+    expect(find.byTooltip('관리'), findsNothing);
+    expect(find.byIcon(Icons.more_vert), findsNothing);
+
+    await tester.tap(find.byTooltip('즐겨찾기 추가').first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('song-action-card')), findsNothing);
+
+    await tester.tap(find.byTooltip('이 곡 추천하기').first);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('song-action-card')), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('artist-song-card-n.flying\nlinked')),
+    );
+    await tester.pumpAndSettle();
+
+    final songCard = find.byKey(const ValueKey('song-action-card'));
+    expect(songCard, findsOneWidget);
+    expect(
+      find.descendant(of: songCard, matching: find.text('즐겨찾기 해제')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('포함된 세트 보기')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('링크 열기')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('곡 수정')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('곡 삭제')),
+      findsOneWidget,
+    );
+    expect(find.text('세트에서 제외'), findsNothing);
+
+    await tester.tap(
+      find.descendant(of: songCard, matching: find.text('포함된 세트 보기')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('이 곡이 포함된 세트'), findsOneWidget);
+    expect(find.text('공연 세트'), findsOneWidget);
+    final includedSetsDialog = find.byType(AlertDialog).last;
+    final includedSetsClose = find.descendant(
+      of: includedSetsDialog,
+      matching: find.widgetWithText(OutlinedButton, '닫기'),
+    );
+    await tester.ensureVisible(includedSetsClose);
+    await tester.tap(includedSetsClose);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(of: songCard, matching: find.text('곡 수정')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('곡 수정하기'), findsOneWidget);
+    final editDialog = find.byType(AlertDialog).last;
+    expect(
+      find.descendant(of: editDialog, matching: find.byTooltip('링크 열기')),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.descendant(of: editDialog, matching: find.byType(TextField)).last,
+      '',
+    );
+    await tester.pump();
+    expect(
+      find.descendant(of: editDialog, matching: find.byTooltip('링크 검색')),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(TextButton, '닫기').last);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('all songs keep batch controls separate from the common card', (
+    WidgetTester tester,
+  ) async {
+    const songsJson =
+        '[{"artist":"N.Flying","title":"Linked","tags":[],"link":"https://example.com"},'
+        '{"artist":"N.Flying","title":"Search","tags":[],"link":""}]';
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {
+        'tdm_alpha_songs': songsJson,
+        'sample_prompt_checked': true,
+      },
+    );
+
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('전체곡 보기'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('이 곡 추천하기'), findsNWidgets(2));
+    expect(find.byTooltip('링크 열기'), findsNothing);
+    expect(find.byTooltip('링크 검색'), findsNothing);
+    expect(find.byTooltip('관리'), findsNothing);
+    expect(find.byIcon(Icons.folder_copy_outlined), findsNothing);
+
+    final linkedRow = find.byKey(
+      const ValueKey('all-songs-n.flying\nlinked-0'),
+    );
+    await tester.tap(
+      find.descendant(of: linkedRow, matching: find.byType(Checkbox)),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('song-action-card')), findsNothing);
+
+    await tester.tap(find.text('N.Flying - Linked'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('song-action-card')), findsOneWidget);
+    expect(find.text('링크 열기'), findsOneWidget);
+    expect(find.text('곡 수정'), findsOneWidget);
+    expect(find.text('곡 삭제'), findsOneWidget);
+
+    await tester.tap(find.text('곡 삭제'));
+    await tester.pumpAndSettle();
+    expect(find.text('이 곡을 삭제할까요?'), findsOneWidget);
+    expect(find.textContaining('세트에서도 함께 사라집니다'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, '취소').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, '닫기').last);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('set song cards replace delete with remove from set', (
+    WidgetTester tester,
+  ) async {
+    const songsJson =
+        '[{"artist":"N.Flying","title":"Linked","tags":[],"link":"https://example.com"}]';
+    const setsJson =
+        '[{"id":"set-1","name":"공연 세트","songs":['
+        '{"artist":"N.Flying","title":"Linked","tags":[],"link":"https://example.com"}'
+        ']}]';
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {
+        'tdm_alpha_songs': songsJson,
+        'tdm_song_sets': setsJson,
+        'sample_prompt_checked': true,
+      },
+    );
+
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('세트저장소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('공연 세트'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('이 곡 추천하기'), findsOneWidget);
+    expect(find.byTooltip('링크 열기'), findsNothing);
+    expect(find.byTooltip('관리'), findsNothing);
+
+    await tester.tap(find.text('1. N.Flying - Linked'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('song-action-card')), findsOneWidget);
+    expect(find.text('즐겨찾기 추가'), findsOneWidget);
+    expect(find.text('포함된 세트 보기'), findsOneWidget);
+    expect(find.text('링크 열기'), findsOneWidget);
+    expect(find.text('곡 수정'), findsOneWidget);
+    expect(find.text('세트에서 제외'), findsOneWidget);
+    expect(find.text('곡 삭제'), findsNothing);
+
+    await tester.tap(find.text('세트에서 제외'));
+    await tester.pumpAndSettle();
+    expect(find.text('곡 제외'), findsOneWidget);
+    expect(find.textContaining('원본 노래 저장소에서는 삭제되지 않아요'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '제외'));
+    await tester.pumpAndSettle();
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString('tdm_alpha_songs'), contains('"Linked"'));
+    expect(
+      preferences.getString('tdm_song_sets'),
+      isNot(contains('"title":"Linked"')),
+    );
+  });
 
   testWidgets('song set detail sorting only changes the visible order', (
     WidgetTester tester,

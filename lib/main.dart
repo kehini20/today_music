@@ -38,8 +38,12 @@ const Color tdmBorder = Color(0xFFB7E8E1);
 const Color tdmLinkBlue = Color(0xFF3A8FC3);
 const Color updateAvailableColor = Color(0xFF5B8DEF);
 const int maxSongSetCount = 30;
-const String appSemanticVersion = '0.7.4';
-const String appDisplayVersion = 'Alpha 0.7.4';
+const String appSemanticVersion = '0.7.5';
+const String appDisplayVersion = 'Alpha 0.7.5';
+const String songTxtImportGuidance =
+    '곡 목록 TXT 파일을 선택하세요.\n앱 전체 백업 JSON 파일은 여기서 불러올 수 없습니다.';
+const String appBackupImportGuidance =
+    '앱 전체 백업 JSON 파일을 선택하세요.\n곡 목록 TXT 파일은 앱 전체 복원에 사용할 수 없습니다.';
 const String imageRecognitionHelpMessage =
     '셋리스트 이미지를 선택하면 이미지 속 글자를 읽어 곡 목록을 분석합니다. '
     '인식 결과가 정확하지 않을 수 있으므로 저장 전 가수명과 곡명을 확인해 주세요.';
@@ -52,11 +56,39 @@ bool shouldShowImageRecognitionControls({
 }
 
 String buildAppBackupFileBaseName(DateTime timestamp) {
+  return 'tdm_app_backup_${buildExportTimestamp(timestamp)}';
+}
+
+String buildExportTimestamp(DateTime timestamp) {
   String twoDigits(int value) => value.toString().padLeft(2, '0');
-  return 'today_music_backup_'
-      '${timestamp.year}-${twoDigits(timestamp.month)}-'
+  return '${timestamp.year}-${twoDigits(timestamp.month)}-'
       '${twoDigits(timestamp.day)}_'
       '${twoDigits(timestamp.hour)}${twoDigits(timestamp.minute)}';
+}
+
+String safeExportFileNamePart(String value, {String fallback = 'artist'}) {
+  var sanitized = value
+      .trim()
+      .replaceAll(RegExp(r'\s+'), '_')
+      .replaceAll(RegExp(r'[\\/:*?"<>|.]'), '')
+      .replaceAll(RegExp(r'[\x00-\x1F\x7F]+'), '')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+  if (sanitized.length > 40) {
+    sanitized = sanitized.substring(0, 40).replaceAll(RegExp(r'_+$'), '');
+  }
+  return sanitized.isEmpty ? fallback : sanitized;
+}
+
+String buildSongsExportFileBaseName(DateTime timestamp, {String? artist}) {
+  final prefix = artist == null
+      ? 'tdm_songs'
+      : 'tdm_${safeExportFileNamePart(artist)}';
+  return '${prefix}_${buildExportTimestamp(timestamp)}';
+}
+
+String buildSetsExportFileBaseName(DateTime timestamp) {
+  return 'tdm_sets_${buildExportTimestamp(timestamp)}';
 }
 
 List<String> reconcileArtistOrder(
@@ -1160,9 +1192,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
   String _songOpenButtonLabel(Song song) =>
       _hasSongLink(song) ? '링크 열기' : '유튜브 검색';
 
-  String _compactSongOpenButtonLabel(Song song) =>
-      _hasSongLink(song) ? '링크' : '검색';
-
   Future<void> _openSongLinkOrYoutube(Song song) async {
     if (!_hasSongLink(song)) {
       await _openYoutubeSearch(song);
@@ -1193,6 +1222,160 @@ class _TodaySongPageState extends State<TodaySongPage> {
     } catch (_) {
       _showRootSnackBar('링크를 열 수 없습니다.');
     }
+  }
+
+  Widget _songRecommendationButton(Song song, {String? sourceSetName}) {
+    return IconButton(
+      constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      tooltip: '이 곡 추천하기',
+      onPressed: () =>
+          _recommendSelectedSong(song, sourceSetName: sourceSetName),
+      icon: const Icon(Icons.recommend_outlined, size: 19),
+    );
+  }
+
+  Future<bool> _showFileImportGuidance({
+    required String title,
+    required String message,
+  }) async {
+    final shouldContinue = await showDialog<bool>(
+      context: context,
+      builder: (guideContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(guideContext).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(guideContext).pop(true),
+              child: const Text('파일 선택'),
+            ),
+          ],
+        );
+      },
+    );
+    return shouldContinue == true;
+  }
+
+  void _showSongActionCard(
+    Song song, {
+    required VoidCallback onSongChanged,
+    VoidCallback? onSongUpdated,
+    String? sourceSetName,
+    SongSet? removeFromSet,
+    VoidCallback? onRemovedFromSet,
+    VoidCallback? onDeleted,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (cardContext) {
+        return StatefulBuilder(
+          builder: (context, refreshCard) {
+            final currentSong = _canonicalStoredSong(song);
+            final isFavorite = _isSongFavorite(currentSong);
+            final hasLink = _hasSongLink(currentSong);
+
+            void closeThen(VoidCallback action) {
+              Navigator.of(cardContext).pop();
+              _runAfterFrame(action);
+            }
+
+            return AlertDialog(
+              key: const ValueKey('song-action-card'),
+              title: Text(
+                '${currentSong.artist} - ${currentSong.title}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OutlinedButton.icon(
+                    key: const ValueKey('song-card-favorite'),
+                    onPressed: () {
+                      _toggleSongFavorite(
+                        currentSong,
+                        onChanged: () {
+                          refreshCard(() {});
+                          onSongChanged();
+                        },
+                      );
+                    },
+                    icon: Icon(isFavorite ? Icons.star : Icons.star_border),
+                    label: Text(isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _showSongIncludedSetsDialog(currentSong),
+                    icon: const Icon(Icons.folder_copy_outlined),
+                    label: const Text('포함된 세트 보기'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _openSongLinkOrYoutube(currentSong),
+                    icon: Icon(hasLink ? Icons.link : Icons.search),
+                    label: Text(hasLink ? '링크 열기' : '링크 검색'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      closeThen(() {
+                        _showEditSongDialog(
+                          currentSong,
+                          onSongUpdated: onSongUpdated ?? onSongChanged,
+                        );
+                      });
+                    },
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('곡 수정'),
+                  ),
+                  const SizedBox(height: 8),
+                  if (removeFromSet != null)
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        closeThen(() {
+                          _showRemoveSingleSongFromSetDialog(
+                            removeFromSet,
+                            currentSong,
+                            onRemoved: onRemovedFromSet,
+                          );
+                        });
+                      },
+                      icon: const Icon(Icons.remove_circle_outline),
+                      label: const Text('세트에서 제외'),
+                    )
+                  else
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        closeThen(() {
+                          _showDeleteSongDialog(
+                            currentSong,
+                            onDeleted: onDeleted ?? onSongChanged,
+                          );
+                        });
+                      },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('곡 삭제'),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(cardContext).pop(),
+                  child: const Text('닫기'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _openSponsorAdLink(SponsorAd ad) async {
@@ -1236,7 +1419,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
       return;
     }
 
-    await _saveExportFileToPhone(songs: _songs);
+    await _saveExportFileToPhone(
+      songs: _songs,
+      fileBaseName: buildSongsExportFileBaseName(DateTime.now()),
+    );
   }
 
   BackupSourceSnapshot _currentBackupSource() {
@@ -1292,6 +1478,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   Future<void> _importAppBackup() async {
     try {
+      final shouldSelect = await _showFileImportGuidance(
+        title: '앱 백업 불러오기',
+        message: appBackupImportGuidance,
+      );
+      if (!shouldSelect) {
+        return;
+      }
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
@@ -1423,33 +1616,28 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
     await _saveExportFileToPhone(
       songs: artistSongs,
-      filePrefix: 'today_music_export_${_safeFileNamePart(artist)}',
+      fileBaseName: buildSongsExportFileBaseName(
+        DateTime.now(),
+        artist: artist,
+      ),
     );
   }
 
   String _safeFileNamePart(String value) {
-    final sanitized = value
-        .trim()
-        .replaceAll(RegExp(r'\s+'), '_')
-        .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '_')
-        .replaceAll(RegExp(r'_+'), '_')
-        .replaceAll(RegExp(r'^_+|_+$'), '');
-
-    return sanitized.isEmpty ? 'artist' : sanitized;
+    return safeExportFileNamePart(value);
   }
 
   Future<void> _saveExportFileToPhone({
     required List<Song> songs,
-    String filePrefix = 'today_music_export',
+    required String fileBaseName,
   }) async {
-    final timestamp = _exportTimestamp();
-    final fileName = _exportFileName(timestamp, filePrefix: filePrefix);
+    final fileName = '$fileBaseName.txt';
 
     try {
       final exportText = _buildSongExportText(songs);
 
       final savedPath = await FileSaver.instance.saveAs(
-        name: _exportFileBaseName(timestamp, filePrefix: filePrefix),
+        name: fileBaseName,
         bytes: Uint8List.fromList(utf8.encode(exportText)),
         fileExtension: 'txt',
         mimeType: MimeType.text,
@@ -1494,28 +1682,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   String _exportTimestamp() {
-    final now = DateTime.now();
-    String twoDigits(int value) => value.toString().padLeft(2, '0');
-
-    return '${now.year}'
-        '${twoDigits(now.month)}'
-        '${twoDigits(now.day)}_'
-        '${twoDigits(now.hour)}'
-        '${twoDigits(now.minute)}';
-  }
-
-  String _exportFileBaseName(
-    String timestamp, {
-    String filePrefix = 'today_music_export',
-  }) {
-    return '${filePrefix}_$timestamp';
-  }
-
-  String _exportFileName(
-    String timestamp, {
-    String filePrefix = 'today_music_export',
-  }) {
-    return '${_exportFileBaseName(timestamp, filePrefix: filePrefix)}.txt';
+    return buildExportTimestamp(DateTime.now());
   }
 
   String _buildSongExportText(List<Song> songs) {
@@ -1551,6 +1718,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   Future<void> _importSongs({VoidCallback? onSongsImported}) async {
     try {
+      final shouldSelect = await _showFileImportGuidance(
+        title: 'TXT 불러오기',
+        message: songTxtImportGuidance,
+      );
+      if (!shouldSelect) {
+        return;
+      }
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['txt'],
@@ -4213,6 +4387,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
           artistNames: artistNames,
           existingSongs: _songs,
           initialSong: song,
+          onOpenLinkOrSearch: _openSongLinkOrYoutube,
           onSubmit: (updatedSong) {
             _updateSong(song, updatedSong);
             onSongUpdated?.call();
@@ -4327,13 +4502,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
                     a.title.toLowerCase().compareTo(b.title.toLowerCase()),
               );
             }
-            final compactButtonStyle = TextButton.styleFrom(
-              minimumSize: const Size(40, 36),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-              textStyle: const TextStyle(fontSize: 12),
-            );
             final availableDialogHeight =
                 MediaQuery.sizeOf(dialogContext).height -
                 MediaQuery.viewInsetsOf(dialogContext).bottom;
@@ -4487,7 +4655,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                   const Divider(height: 10),
                               itemBuilder: (context, index) {
                                 final song = songs[index];
-                                final hasLink = _hasSongLink(song);
 
                                 return Padding(
                                   padding: const EdgeInsets.symmetric(
@@ -4508,85 +4675,49 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                         ),
                                       ),
                                       Expanded(
-                                        child: Text(
-                                          song.title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600,
+                                        child: InkWell(
+                                          key: ValueKey(
+                                            'artist-song-card-${_songDuplicateKey(song)}',
+                                          ),
+                                          onTap: () => _showSongActionCard(
+                                            song,
+                                            onSongChanged: () {
+                                              if (dialogContext.mounted) {
+                                                refreshDialog(() {});
+                                              }
+                                              onSongChanged?.call();
+                                            },
+                                            onDeleted: () {
+                                              if (allArtistSongs.length == 1 &&
+                                                  dialogContext.mounted) {
+                                                Navigator.of(
+                                                  dialogContext,
+                                                ).pop();
+                                              } else if (dialogContext
+                                                  .mounted) {
+                                                refreshDialog(() {});
+                                              }
+                                              onSongChanged?.call();
+                                            },
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 10,
+                                            ),
+                                            child: Text(
+                                              song.title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
-                                      TextButton(
-                                        onPressed: () =>
-                                            _openSongLinkOrYoutube(song),
-                                        style: compactButtonStyle,
-                                        child: Text(
-                                          _compactSongOpenButtonLabel(song),
-                                          style: TextStyle(
-                                            color: hasLink ? tdmLinkBlue : null,
-                                            fontWeight: hasLink
-                                                ? FontWeight.w800
-                                                : FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                      IconButton(
-                                        visualDensity: VisualDensity.compact,
-                                        tooltip:
-                                            '\uC774 \uACE1 \uCD94\uCC9C\uD558\uAE30',
-                                        onPressed: () =>
-                                            _recommendSelectedSong(song),
-                                        icon: const Icon(
-                                          Icons.recommend_outlined,
-                                          size: 18,
-                                        ),
-                                      ),
-                                      PopupMenuButton<String>(
-                                        tooltip: '\uAD00\uB9AC',
-                                        onSelected: (value) {
-                                          if (value == 'edit') {
-                                            _showEditSongDialog(
-                                              song,
-                                              onSongUpdated: () {
-                                                if (dialogContext.mounted) {
-                                                  refreshDialog(() {});
-                                                }
-                                                onSongChanged?.call();
-                                              },
-                                            );
-                                          } else if (value == 'delete') {
-                                            _showDeleteSongDialog(
-                                              song,
-                                              onDeleted: () {
-                                                if (allArtistSongs.length ==
-                                                        1 &&
-                                                    dialogContext.mounted) {
-                                                  Navigator.of(
-                                                    dialogContext,
-                                                  ).pop();
-                                                }
-                                                if (dialogContext.mounted) {
-                                                  refreshDialog(() {});
-                                                }
-                                                onSongChanged?.call();
-                                              },
-                                            );
-                                          }
-                                        },
-                                        itemBuilder: (context) => const [
-                                          PopupMenuItem(
-                                            value: 'edit',
-                                            child: Text('\uC218\uC815'),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'delete',
-                                            child: Text('\uC0AD\uC81C'),
-                                          ),
-                                        ],
-                                      ),
+                                      _songRecommendationButton(song),
                                     ],
                                   ),
                                 );
@@ -4876,21 +5007,47 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                         ),
                                       ),
                                       Expanded(
-                                        child: Text(
-                                          '${song.artist} - ${song.title}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                        child: InkWell(
+                                          key: ValueKey(
+                                            'all-song-card-${_songDuplicateKey(song)}',
+                                          ),
+                                          onTap: () => _showSongActionCard(
+                                            song,
+                                            onSongChanged: () {
+                                              refreshDialog(() {});
+                                              if (showFavoritesOnly) {
+                                                resetAllSongsScroll();
+                                              }
+                                              onSongsChanged?.call();
+                                            },
+                                            onSongUpdated: () {
+                                              selectedSongs.remove(song);
+                                              if (dialogContext.mounted) {
+                                                refreshDialog(() {});
+                                              }
+                                              onSongsChanged?.call();
+                                            },
+                                            onDeleted: () {
+                                              selectedSongs.remove(song);
+                                              if (dialogContext.mounted) {
+                                                refreshDialog(() {});
+                                              }
+                                              onSongsChanged?.call();
+                                            },
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 10,
+                                            ),
+                                            child: Text(
+                                              '${song.artist} - ${song.title}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                      IconButton(
-                                        tooltip:
-                                            '\uD3EC\uD568\uB41C \uC138\uD2B8 \uBCF4\uAE30',
-                                        icon: const Icon(
-                                          Icons.folder_copy_outlined,
-                                        ),
-                                        onPressed: () =>
-                                            _showSongIncludedSetsDialog(song),
-                                      ),
+                                      _songRecommendationButton(song),
                                     ],
                                   ),
                                 );
@@ -5348,7 +5505,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final timestamp = _exportTimestamp();
     final safeSetName = _safeFileNamePart(songSet.name);
     await _saveTextExportFile(
-      fileBaseName: 'today_music_set_${safeSetName}_$timestamp',
+      fileBaseName: 'tdm_set_${safeSetName}_$timestamp',
       text: _buildSongSetExportText(songSet),
       successMessage: '세트 리스트를 내보냈어요.',
     );
@@ -5361,7 +5518,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     }
 
     await _saveTextExportFile(
-      fileBaseName: 'today_music_sets_${_exportTimestamp()}',
+      fileBaseName: buildSetsExportFileBaseName(DateTime.now()),
       text: _buildAllSongSetsExportText(),
       successMessage: '전체 세트 리스트를 내보냈어요.',
     );
@@ -5763,13 +5920,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 final song = visibleSongs[index];
                                 return Row(
                                   children: [
-                                    Expanded(
-                                      child: Text(
-                                        '${index + 1}. ${song.artist} - ${song.title}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
                                     _favoriteSongIconButton(
                                       song,
                                       onChanged: () {
@@ -5779,34 +5929,49 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                         onChanged?.call();
                                       },
                                     ),
-                                    IconButton(
-                                      visualDensity: VisualDensity.compact,
-                                      tooltip:
-                                          '\uC774 \uACE1 \uCD94\uCC9C\uD558\uAE30',
-                                      onPressed: () => _recommendSelectedSong(
-                                        song,
-                                        sourceSetName: songSet.name,
-                                      ),
-                                      icon: const Icon(
-                                        Icons.recommend_outlined,
-                                        size: 18,
+                                    Expanded(
+                                      child: InkWell(
+                                        key: ValueKey(
+                                          'set-song-card-${_songDuplicateKey(song)}',
+                                        ),
+                                        onTap: () => _showSongActionCard(
+                                          song,
+                                          sourceSetName: songSet.name,
+                                          removeFromSet: songSet,
+                                          onSongChanged: () {
+                                            if (detailContext.mounted) {
+                                              refreshDialog(() {});
+                                            }
+                                            onChanged?.call();
+                                          },
+                                          onSongUpdated: () {
+                                            if (detailContext.mounted) {
+                                              refreshDialog(() {});
+                                            }
+                                            onChanged?.call();
+                                          },
+                                          onRemovedFromSet: () {
+                                            if (detailContext.mounted) {
+                                              refreshDialog(() {});
+                                            }
+                                            onChanged?.call();
+                                          },
+                                        ),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 10,
+                                          ),
+                                          child: Text(
+                                            '${index + 1}. ${song.artist} - ${song.title}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                    IconButton(
-                                      visualDensity: VisualDensity.compact,
-                                      tooltip: '세트에서 제외',
-                                      onPressed: () =>
-                                          _showRemoveSingleSongFromSetDialog(
-                                            songSet,
-                                            song,
-                                            onRemoved: () {
-                                              _runAfterFrame(() {
-                                                refreshDialog(() {});
-                                                onChanged?.call();
-                                              });
-                                            },
-                                          ),
-                                      icon: const Icon(Icons.close, size: 18),
+                                    _songRecommendationButton(
+                                      song,
+                                      sourceSetName: songSet.name,
                                     ),
                                   ],
                                 );
@@ -6333,8 +6498,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
       context: context,
       builder: (confirmContext) {
         return AlertDialog(
-          title: const Text('삭제'),
-          content: Text('${song.artist} - ${song.title}\n\n이 곡을 삭제할까요?'),
+          title: const Text('이 곡을 삭제할까요?'),
+          content: Text(
+            '${song.artist} - ${song.title}\n\n'
+            '삭제하면 노래 저장소에서 완전히 삭제되며,\n'
+            '이 곡이 포함된 세트에서도 함께 사라집니다.',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(confirmContext).pop(),
@@ -7087,6 +7256,7 @@ class AddSongDialog extends StatefulWidget {
   final List<String> artistNames;
   final List<Song> existingSongs;
   final ValueChanged<Song> onSubmit;
+  final Future<void> Function(Song song)? onOpenLinkOrSearch;
   final Song? initialSong;
 
   const AddSongDialog({
@@ -7094,6 +7264,7 @@ class AddSongDialog extends StatefulWidget {
     required this.artistNames,
     required this.existingSongs,
     required this.onSubmit,
+    this.onOpenLinkOrSearch,
     this.initialSong,
   });
 
@@ -7217,6 +7388,21 @@ class _AddSongDialogState extends State<AddSongDialog> {
     );
   }
 
+  Song _currentDraftSong() {
+    final initialSong = widget.initialSong;
+    return Song(
+      artist: _artistName.trim().isNotEmpty
+          ? _artistName.trim()
+          : initialSong?.artist ?? '',
+      title: _titleController.text.trim().isNotEmpty
+          ? _titleController.text.trim()
+          : initialSong?.title ?? '',
+      tags: normalizeTagInput(_tagsController.text),
+      memo: _memoController.text.trim(),
+      link: _linkController.text.trim(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -7273,9 +7459,24 @@ class _AddSongDialogState extends State<AddSongDialog> {
               TextField(
                 controller: _linkController,
                 keyboardType: TextInputType.url,
-                decoration: const InputDecoration(
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
                   labelText: '링크',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  suffixIcon: _isEditMode && widget.onOpenLinkOrSearch != null
+                      ? IconButton(
+                          tooltip: _linkController.text.trim().isNotEmpty
+                              ? '링크 열기'
+                              : '링크 검색',
+                          onPressed: () =>
+                              widget.onOpenLinkOrSearch!(_currentDraftSong()),
+                          icon: Icon(
+                            _linkController.text.trim().isNotEmpty
+                                ? Icons.link
+                                : Icons.search,
+                          ),
+                        )
+                      : null,
                 ),
               ),
             ],
