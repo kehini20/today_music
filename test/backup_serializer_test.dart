@@ -16,6 +16,7 @@ void main() {
     List<String>? selectedSetIds,
     String defaultShareMessage = '오늘은 이 곡을 들어보세요 🎧',
     String randomMode = 'artistRandom',
+    List<String>? artistOrder,
   }) {
     return BackupSourceSnapshot(
       songs: songs ?? const [],
@@ -24,6 +25,7 @@ void main() {
       selectedSetIds: selectedSetIds ?? const [],
       defaultShareMessage: defaultShareMessage,
       randomMode: randomMode,
+      artistOrder: artistOrder ?? const [],
     );
   }
 
@@ -88,6 +90,7 @@ void main() {
           disabledArtists: const {'키(KEY) 漢字'},
           selectedSetIds: const ['set-keyland'],
           randomMode: 'songSets',
+          artistOrder: const ['키(KEY) 漢字'],
         ),
         appVersion: '0.7.0',
         createdAt: DateTime.parse('2026-06-20T12:00:00+09:00'),
@@ -105,6 +108,7 @@ void main() {
       expect(restored.selectedSetIds, ['set-keyland']);
       expect(restored.defaultShareMessage, '오늘은 이 곡을 들어보세요 🎧');
       expect(restored.randomMode, 'songSets');
+      expect(restored.artistOrder, ['키(KEY) 漢字']);
       expect(decoded.summary.favoriteCount, 1);
     });
 
@@ -208,6 +212,22 @@ void main() {
       expect(document.data.songs.single.order, 0);
       expect(document.data.appSettings.randomMode, 'artistRandom');
       expect(document.data.shareSettings.defaultMessage, isEmpty);
+      expect(document.data.appSettings.artistOrder, isEmpty);
+    });
+
+    test('rejects duplicate artists in optional custom order', () {
+      final json = validJson();
+      final data = Map<String, Object?>.from(json['data']! as Map);
+      data['appSettings'] = {
+        'randomMode': 'artistRandom',
+        'artistOrder': ['KEY', 'key'],
+      };
+      json['data'] = data;
+
+      expect(
+        () => serializer.decode(jsonEncode(json)),
+        throwsA(isA<BackupValidationException>()),
+      );
     });
 
     test('rejects an unsupported format version', () {

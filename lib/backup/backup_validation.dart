@@ -108,6 +108,16 @@ class BackupValidator {
       );
     }
 
+    final artistOrder = <String>{};
+    for (final artist in document.data.appSettings.artistOrder) {
+      final normalized = artist.trim().toLowerCase();
+      if (normalized.isEmpty) {
+        errors.add('Artist order contains an empty artist.');
+      } else if (!artistOrder.add(normalized)) {
+        errors.add('Artist order contains a duplicate artist: $artist.');
+      }
+    }
+
     final actualFavoriteCount = document.data.songs
         .where((song) => song.isFavorite)
         .length;

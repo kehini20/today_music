@@ -170,16 +170,24 @@ class BackupShareSettings {
 
 class BackupAppSettings {
   final String randomMode;
+  final List<String> artistOrder;
 
-  const BackupAppSettings({required this.randomMode});
+  const BackupAppSettings({
+    required this.randomMode,
+    this.artistOrder = const [],
+  });
 
   factory BackupAppSettings.fromJson(Map<String, Object?> json) {
     return BackupAppSettings(
       randomMode: _optionalString(json, 'randomMode', fallback: 'artistRandom'),
+      artistOrder: _optionalStringList(json, 'artistOrder'),
     );
   }
 
-  Map<String, Object?> toJson() => {'randomMode': randomMode};
+  Map<String, Object?> toJson() => {
+    'randomMode': randomMode,
+    'artistOrder': artistOrder,
+  };
 }
 
 class BackupData {
@@ -304,6 +312,7 @@ class BackupSourceSnapshot {
   final List<String> selectedSetIds;
   final String defaultShareMessage;
   final String randomMode;
+  final List<String> artistOrder;
 
   const BackupSourceSnapshot({
     required this.songs,
@@ -312,6 +321,7 @@ class BackupSourceSnapshot {
     required this.selectedSetIds,
     required this.defaultShareMessage,
     required this.randomMode,
+    this.artistOrder = const [],
   });
 }
 
@@ -334,6 +344,7 @@ class BackupRestoreSnapshot {
   final List<String> selectedSetIds;
   final String defaultShareMessage;
   final String randomMode;
+  final List<String> artistOrder;
 
   const BackupRestoreSnapshot({
     required this.songs,
@@ -342,6 +353,7 @@ class BackupRestoreSnapshot {
     required this.selectedSetIds,
     required this.defaultShareMessage,
     required this.randomMode,
+    this.artistOrder = const [],
   });
 }
 

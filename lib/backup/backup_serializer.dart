@@ -78,7 +78,10 @@ class BackupSerializer {
         shareSettings: BackupShareSettings(
           defaultMessage: source.defaultShareMessage,
         ),
-        appSettings: BackupAppSettings(randomMode: source.randomMode),
+        appSettings: BackupAppSettings(
+          randomMode: source.randomMode,
+          artistOrder: List<String>.of(source.artistOrder),
+        ),
       ),
     );
     validator.validateOrThrow(document);
@@ -137,6 +140,7 @@ class BackupSerializer {
       selectedSetIds: List<String>.of(document.data.selectedSetIds),
       defaultShareMessage: document.data.shareSettings.defaultMessage,
       randomMode: document.data.appSettings.randomMode,
+      artistOrder: List<String>.of(document.data.appSettings.artistOrder),
     );
   }
 

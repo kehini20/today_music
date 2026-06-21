@@ -38,8 +38,8 @@ const Color tdmBorder = Color(0xFFB7E8E1);
 const Color tdmLinkBlue = Color(0xFF3A8FC3);
 const Color updateAvailableColor = Color(0xFF5B8DEF);
 const int maxSongSetCount = 30;
-const String appSemanticVersion = '0.7.2';
-const String appDisplayVersion = 'Alpha 0.7.2';
+const String appSemanticVersion = '0.7.4';
+const String appDisplayVersion = 'Alpha 0.7.4';
 const String imageRecognitionHelpMessage =
     '셋리스트 이미지를 선택하면 이미지 속 글자를 읽어 곡 목록을 분석합니다. '
     '인식 결과가 정확하지 않을 수 있으므로 저장 전 가수명과 곡명을 확인해 주세요.';
@@ -59,6 +59,42 @@ String buildAppBackupFileBaseName(DateTime timestamp) {
       '${twoDigits(timestamp.hour)}${twoDigits(timestamp.minute)}';
 }
 
+List<String> reconcileArtistOrder(
+  Iterable<String> currentArtists,
+  Iterable<String> storedOrder,
+) {
+  final current = currentArtists
+      .map((artist) => artist.trim())
+      .where((artist) => artist.isNotEmpty)
+      .toList();
+  final stored = storedOrder
+      .map((artist) => artist.trim())
+      .where((artist) => artist.isNotEmpty)
+      .toList();
+  if (stored.isEmpty) {
+    return const [];
+  }
+
+  final currentByKey = {
+    for (final artist in current) artist.toLowerCase(): artist,
+  };
+  final result = <String>[];
+  final seen = <String>{};
+  for (final artist in stored) {
+    final key = artist.toLowerCase();
+    final currentSpelling = currentByKey[key];
+    if (currentSpelling != null && seen.add(key)) {
+      result.add(currentSpelling);
+    }
+  }
+  for (final artist in current) {
+    if (seen.add(artist.toLowerCase())) {
+      result.add(artist);
+    }
+  }
+  return result;
+}
+
 enum AddSongTab { individual, paste }
 
 class SongStorage {
@@ -70,6 +106,7 @@ class SongStorage {
   static const String _defaultShareMessageKey = 'tdm_default_share_message';
   static const String _disabledRandomArtistsKey = 'tdm_disabled_random_artists';
   static const String _lastAddSongTabKey = 'tdm_last_add_song_tab';
+  static const String _artistOrderKey = 'tdm_artist_order';
 
   static Future<List<Song>?> loadSongs() async {
     try {
@@ -270,6 +307,28 @@ class SongStorage {
     }
   }
 
+  static Future<List<String>> loadArtistOrder() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return preferences.getStringList(_artistOrderKey) ?? const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> saveArtistOrder(List<String> artists) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      if (artists.isEmpty) {
+        await preferences.remove(_artistOrderKey);
+      } else {
+        await preferences.setStringList(_artistOrderKey, artists);
+      }
+    } catch (_) {
+      // Artist order persistence should never crash the app.
+    }
+  }
+
   static Future<void> resetAllAppData() async {
     final preferences = await SharedPreferences.getInstance();
     await Future.wait([
@@ -281,6 +340,7 @@ class SongStorage {
       preferences.remove(_defaultShareMessageKey),
       preferences.remove(_disabledRandomArtistsKey),
       preferences.remove(_lastAddSongTabKey),
+      preferences.remove(_artistOrderKey),
     ]);
   }
 }
@@ -357,9 +417,11 @@ class SongSetImportResult {
   });
 }
 
-enum ArtistSortMode { added, name, songCount }
+enum ArtistSortMode { defaultOrder, name, added, songCount, custom }
 
 enum SongListSortMode { added, title }
+
+enum SongSetDetailSortMode { added, titleAscending, titleDescending }
 
 enum SongStorageTab { songs, sets }
 
@@ -446,13 +508,14 @@ class _TodaySongPageState extends State<TodaySongPage> {
   String _defaultShareMessage = '';
   bool _includeTodayTag = true;
   bool _includeSongLink = true;
-  ArtistSortMode _artistSortMode = ArtistSortMode.added;
+  ArtistSortMode _artistSortMode = ArtistSortMode.defaultOrder;
   SongStorageTab _songStorageTab = SongStorageTab.songs;
   Set<String> _disabledRandomArtists = {};
   List<SongSet> _songSets = [];
   RandomMode _randomMode = RandomMode.artistRandom;
   List<String> _selectedSongSetIds = [];
   AddSongTab _lastAddSongTab = AddSongTab.individual;
+  List<String> _artistOrder = [];
 
   @override
   void initState() {
@@ -476,6 +539,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final samplePromptChecked = await SongStorage.isSamplePromptChecked();
     final defaultShareMessage = await SongStorage.loadDefaultShareMessage();
     final lastAddSongTab = await SongStorage.loadLastAddSongTab();
+    final savedArtistOrder = await SongStorage.loadArtistOrder();
 
     if (!mounted) {
       return;
@@ -497,6 +561,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _disabledRandomArtists = disabledRandomArtists
           .where(existingArtists.contains)
           .toSet();
+      _artistOrder = reconcileArtistOrder(existingArtists, savedArtistOrder);
+      if (_artistOrder.isNotEmpty) {
+        _artistSortMode = ArtistSortMode.custom;
+      } else {
+        _artistSortMode = ArtistSortMode.defaultOrder;
+      }
       _selectedSong = null;
       _lastResultSong = null;
       _isSponsorPick = false;
@@ -538,6 +608,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
     _disabledRandomArtists = _disabledRandomArtists
         .where(existingArtists.contains)
         .toSet();
+    final reconciledOrder = reconcileArtistOrder(existingArtists, _artistOrder);
+    if (!listEquals(reconciledOrder, _artistOrder)) {
+      _artistOrder = reconciledOrder;
+      SongStorage.saveArtistOrder(_artistOrder);
+    }
   }
 
   List<SongSet> _songSetsSyncedWithSongs(List<SongSet> sets, List<Song> songs) {
@@ -1180,6 +1255,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       selectedSetIds: List<String>.of(_selectedSongSetIds),
       defaultShareMessage: _defaultShareMessage,
       randomMode: _randomMode.name,
+      artistOrder: List<String>.of(_artistOrder),
     );
   }
 
@@ -1311,6 +1387,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
           .where(existingArtists.contains)
           .toSet();
       _defaultShareMessage = restored.defaultShareMessage;
+      _artistOrder = reconcileArtistOrder(
+        songsByArtist(_songs).keys,
+        restored.artistOrder,
+      );
+      _artistSortMode = _artistOrder.isEmpty
+          ? ArtistSortMode.defaultOrder
+          : ArtistSortMode.custom;
       _selectedSong = null;
       _lastResultSong = null;
       _isSponsorPick = false;
@@ -1327,6 +1410,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       SongStorage.saveSelectedSongSetIds(_selectedSongSetIds),
       SongStorage.saveDisabledRandomArtists(_disabledRandomArtists),
       SongStorage.saveDefaultShareMessage(_defaultShareMessage),
+      SongStorage.saveArtistOrder(_artistOrder),
     ]);
   }
 
@@ -1714,6 +1798,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _selectedSongSetIds.clear();
       _defaultShareMessage = '';
       _lastAddSongTab = AddSongTab.individual;
+      _artistOrder = [];
+      _artistSortMode = ArtistSortMode.defaultOrder;
       _shareTextController.clear();
       _includeTodayTag = true;
       _includeSongLink = true;
@@ -1931,6 +2017,170 @@ class _TodaySongPageState extends State<TodaySongPage> {
     );
   }
 
+  List<String> _artistNamesForSort(ArtistSortMode mode) {
+    final entries = songsByArtist(_songs).entries.toList();
+    switch (mode) {
+      case ArtistSortMode.defaultOrder:
+      case ArtistSortMode.added:
+        break;
+      case ArtistSortMode.custom:
+        final orderIndexes = {
+          for (var index = 0; index < _artistOrder.length; index++)
+            _artistOrder[index].toLowerCase(): index,
+        };
+        entries.sort((a, b) {
+          final left = orderIndexes[a.key.toLowerCase()] ?? _artistOrder.length;
+          final right =
+              orderIndexes[b.key.toLowerCase()] ?? _artistOrder.length;
+          return left.compareTo(right);
+        });
+      case ArtistSortMode.name:
+        entries.sort(
+          (a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()),
+        );
+      case ArtistSortMode.songCount:
+        entries.sort((a, b) {
+          final countCompare = b.value.length.compareTo(a.value.length);
+          if (countCompare != 0) {
+            return countCompare;
+          }
+          return a.key.toLowerCase().compareTo(b.key.toLowerCase());
+        });
+    }
+    return entries.map((entry) => entry.key).toList();
+  }
+
+  Future<void> _showArtistOrderEditor({VoidCallback? onSaved}) async {
+    final initialOrder = _artistOrder.isNotEmpty
+        ? reconcileArtistOrder(songsByArtist(_songs).keys, _artistOrder)
+        : _artistNamesForSort(
+            _artistSortMode == ArtistSortMode.custom
+                ? ArtistSortMode.added
+                : _artistSortMode,
+          );
+    if (initialOrder.isEmpty) {
+      _showRootSnackBar('순서를 편집할 가수명이 없어요.');
+      return;
+    }
+    final draftOrder = List<String>.of(initialOrder);
+
+    await showDialog<void>(
+      context: context,
+      builder: (editorContext) {
+        return StatefulBuilder(
+          builder: (context, refreshEditor) {
+            return AlertDialog(
+              title: const Text('가수 순서 편집'),
+              content: SizedBox(
+                width: min(MediaQuery.sizeOf(editorContext).width - 64, 520),
+                height: min(MediaQuery.sizeOf(editorContext).height * 0.6, 520),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      '드래그 핸들을 움직여 가수별 목록 순서를 정해 주세요.',
+                      style: TextStyle(color: tdmTextSub, fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ReorderableListView.builder(
+                        buildDefaultDragHandles: false,
+                        itemCount: draftOrder.length,
+                        onReorderItem: (oldIndex, newIndex) {
+                          refreshEditor(() {
+                            final artist = draftOrder.removeAt(oldIndex);
+                            draftOrder.insert(newIndex, artist);
+                          });
+                        },
+                        itemBuilder: (context, index) {
+                          final artist = draftOrder[index];
+                          return ListTile(
+                            key: ValueKey('artist-order-$artist'),
+                            contentPadding: EdgeInsets.zero,
+                            leading: ReorderableDragStartListener(
+                              index: index,
+                              child: const Tooltip(
+                                message: '드래그해서 순서 변경',
+                                child: Icon(Icons.drag_handle),
+                              ),
+                            ),
+                            title: Text(artist),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: () async {
+                        final shouldReset = await showDialog<bool>(
+                          context: editorContext,
+                          builder: (confirmContext) {
+                            return AlertDialog(
+                              title: const Text('기본 정렬로 되돌릴까요?'),
+                              content: const Text(
+                                '가수 순서를 기본 정렬로 되돌릴까요?\n'
+                                '직접 정한 순서는 초기화됩니다.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(confirmContext).pop(false),
+                                  child: const Text('취소'),
+                                ),
+                                FilledButton(
+                                  onPressed: () =>
+                                      Navigator.of(confirmContext).pop(true),
+                                  child: const Text('되돌리기'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                        if (shouldReset != true || !mounted) {
+                          return;
+                        }
+                        setState(() {
+                          _artistOrder = [];
+                          _artistSortMode = ArtistSortMode.defaultOrder;
+                        });
+                        await SongStorage.saveArtistOrder(const []);
+                        if (editorContext.mounted) {
+                          Navigator.of(editorContext).pop();
+                        }
+                        onSaved?.call();
+                      },
+                      child: const Text('기본 정렬로 되돌리기'),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(editorContext).pop(),
+                  child: const Text('취소'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    setState(() {
+                      _artistOrder = List<String>.of(draftOrder);
+                      _artistSortMode = ArtistSortMode.custom;
+                    });
+                    await SongStorage.saveArtistOrder(_artistOrder);
+                    if (editorContext.mounted) {
+                      Navigator.of(editorContext).pop();
+                    }
+                    onSaved?.call();
+                  },
+                  child: const Text('저장'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showSongStorageSheet() {
     final setSearchController = TextEditingController();
 
@@ -1946,8 +2196,21 @@ class _TodaySongPageState extends State<TodaySongPage> {
             final groupedSongs = songsByArtist(_songs);
             final artistEntries = groupedSongs.entries.toList();
             switch (_artistSortMode) {
+              case ArtistSortMode.defaultOrder:
               case ArtistSortMode.added:
                 break;
+              case ArtistSortMode.custom:
+                final orderIndexes = {
+                  for (var index = 0; index < _artistOrder.length; index++)
+                    _artistOrder[index].toLowerCase(): index,
+                };
+                artistEntries.sort((a, b) {
+                  final left =
+                      orderIndexes[a.key.toLowerCase()] ?? _artistOrder.length;
+                  final right =
+                      orderIndexes[b.key.toLowerCase()] ?? _artistOrder.length;
+                  return left.compareTo(right);
+                });
               case ArtistSortMode.name:
                 artistEntries.sort(
                   (a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()),
@@ -2039,41 +2302,105 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         ),
                         const SizedBox(height: 8),
                         Row(
+                          key: const ValueKey('artist-storage-toolbar'),
                           children: [
-                            Expanded(
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: SegmentedButton<ArtistSortMode>(
-                                  showSelectedIcon: false,
-                                  segments: const [
-                                    ButtonSegment(
-                                      value: ArtistSortMode.added,
-                                      label: Text('등록순'),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minWidth: 112,
+                                maxWidth: 148,
+                              ),
+                              child: PopupMenuButton<ArtistSortMode>(
+                                key: const ValueKey('artist-sort-menu'),
+                                onSelected: (mode) {
+                                  if (mode == ArtistSortMode.custom) {
+                                    _showArtistOrderEditor(
+                                      onSaved: () => refreshSheet(() {}),
+                                    );
+                                    return;
+                                  }
+                                  refreshSheet(() {
+                                    _artistSortMode = mode;
+                                  });
+                                },
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
+                                    value: ArtistSortMode.defaultOrder,
+                                    child: Text('기본'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: ArtistSortMode.name,
+                                    child: Text('이름'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: ArtistSortMode.added,
+                                    child: Text('등록'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: ArtistSortMode.songCount,
+                                    child: Text('곡수'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: ArtistSortMode.custom,
+                                    child: Text('사용자지정'),
+                                  ),
+                                ],
+                                child: Container(
+                                  height: 40,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: colorScheme.outline,
                                     ),
-                                    ButtonSegment(
-                                      value: ArtistSortMode.name,
-                                      label: Text('이름순'),
-                                    ),
-                                    ButtonSegment(
-                                      value: ArtistSortMode.songCount,
-                                      label: Text('곡수순'),
-                                    ),
-                                  ],
-                                  selected: {_artistSortMode},
-                                  onSelectionChanged: (selection) {
-                                    refreshSheet(() {
-                                      _artistSortMode = selection.first;
-                                    });
-                                  },
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          switch (_artistSortMode) {
+                                            ArtistSortMode.defaultOrder =>
+                                              '정렬순서',
+                                            ArtistSortMode.name => '이름',
+                                            ArtistSortMode.added => '등록',
+                                            ArtistSortMode.songCount => '곡수',
+                                            ArtistSortMode.custom => '사용자지정',
+                                          },
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.arrow_drop_down),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
-                            OutlinedButton(
+                            if (_artistSortMode == ArtistSortMode.custom) ...[
+                              OutlinedButton(
+                                onPressed: () => _showArtistOrderEditor(
+                                  onSaved: () => refreshSheet(() {}),
+                                ),
+                                child: const Text('편집', maxLines: 1),
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                            const Spacer(),
+                            TextButton(
+                              key: const ValueKey('all-songs-button'),
                               onPressed: () => _showAllSongsDialog(
                                 onSongsChanged: () => refreshSheet(() {}),
                               ),
-                              child: const Text('전체보기', maxLines: 1),
+                              child: const Text(
+                                '전체곡 보기',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ],
                         ),
@@ -3752,10 +4079,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                   return;
                                 }
 
+                                onSongsAdded?.call();
                                 FocusManager.instance.primaryFocus?.unfocus();
                                 Navigator.of(analysisContext).pop();
                                 _runAfterRouteSettled(() {
-                                  onSongsAdded?.call();
                                   _showRootSnackBar(
                                     '새 곡 ${result.addedCount}곡 추가, '
                                     '기존 곡 ${result.updatedCount}곡 업데이트, '
@@ -4095,28 +4422,29 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           Flexible(
                             child: Align(
                               alignment: Alignment.centerRight,
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: SegmentedButton<SongListSortMode>(
-                                  showSelectedIcon: false,
-                                  segments: const [
-                                    ButtonSegment(
-                                      value: SongListSortMode.added,
-                                      label: Text('\uCD94\uAC00\uC21C'),
-                                    ),
-                                    ButtonSegment(
-                                      value: SongListSortMode.title,
-                                      label: Text('\uACE1\uBA85\uC21C'),
-                                    ),
-                                  ],
-                                  selected: {songSortMode},
-                                  onSelectionChanged: (selection) {
-                                    refreshDialog(() {
-                                      songSortMode = selection.first;
-                                    });
-                                    resetSongListScroll();
-                                  },
-                                ),
+                              child: DropdownButton<SongListSortMode>(
+                                key: const ValueKey('artist-song-sort'),
+                                value: songSortMode,
+                                isDense: true,
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: SongListSortMode.added,
+                                    child: Text('등록'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: SongListSortMode.title,
+                                    child: Text('이름'),
+                                  ),
+                                ],
+                                onChanged: (mode) {
+                                  if (mode == null) {
+                                    return;
+                                  }
+                                  refreshDialog(() {
+                                    songSortMode = mode;
+                                  });
+                                  resetSongListScroll();
+                                },
                               ),
                             ),
                           ),
@@ -4299,6 +4627,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final allSongsScrollController = ScrollController();
     var isAllSongsDialogClosed = false;
     var showFavoritesOnly = false;
+    var songSortMode = SongListSortMode.added;
 
     void resetAllSongsScroll() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -4314,7 +4643,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, refreshDialog) {
-            final songs = _allSongsForOverview();
+            final songs = List<Song>.of(_songs);
             final query = searchController.text;
             final visibleSongs = songs
                 .where(
@@ -4323,6 +4652,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       _matchesSongSearch(song, query),
                 )
                 .toList();
+            if (songSortMode == SongListSortMode.title) {
+              visibleSongs.sort(
+                (a, b) =>
+                    a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+              );
+            }
             final selectedCount = selectedSongs.length;
             final setLimitReached = _songSets.length >= maxSongSetCount;
             final selectedVisibleSongs = visibleSongs
@@ -4438,6 +4773,30 @@ class _TodaySongPageState extends State<TodaySongPage> {
                             ),
                           ),
                           const Spacer(),
+                          DropdownButton<SongListSortMode>(
+                            key: const ValueKey('all-song-sort'),
+                            value: songSortMode,
+                            isDense: true,
+                            items: const [
+                              DropdownMenuItem(
+                                value: SongListSortMode.added,
+                                child: Text('등록'),
+                              ),
+                              DropdownMenuItem(
+                                value: SongListSortMode.title,
+                                child: Text('이름'),
+                              ),
+                            ],
+                            onChanged: (mode) {
+                              if (mode == null) {
+                                return;
+                              }
+                              refreshDialog(() {
+                                songSortMode = mode;
+                              });
+                              resetAllSongsScroll();
+                            },
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -5268,6 +5627,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   void _showSongSetDetailDialog(String setId, {VoidCallback? onChanged}) {
     final songSetDetailScrollController = ScrollController();
+    var detailSortMode = SongSetDetailSortMode.added;
 
     showDialog<void>(
       context: context,
@@ -5279,11 +5639,25 @@ class _TodaySongPageState extends State<TodaySongPage> {
               return const AlertDialog(content: Text('세트를 찾을 수 없어요.'));
             }
 
+            final visibleSongs = List<Song>.of(songSet.songs);
+            switch (detailSortMode) {
+              case SongSetDetailSortMode.added:
+                break;
+              case SongSetDetailSortMode.titleAscending:
+                visibleSongs.sort(
+                  (a, b) =>
+                      a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+                );
+              case SongSetDetailSortMode.titleDescending:
+                visibleSongs.sort(
+                  (a, b) =>
+                      b.title.toLowerCase().compareTo(a.title.toLowerCase()),
+                );
+            }
             final songSetContentMaxHeight =
                 MediaQuery.sizeOf(detailContext).height * 0.55;
             final songSetSongsCanScroll =
-                songSet.songs.length * 46 >
-                max(0, songSetContentMaxHeight - 34);
+                visibleSongs.length * 46 > max(0, songSetContentMaxHeight - 34);
 
             return AlertDialog(
               title: Row(
@@ -5330,7 +5704,38 @@ class _TodaySongPageState extends State<TodaySongPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('${songSet.songs.length}곡'),
+                      Row(
+                        children: [
+                          Expanded(child: Text('${songSet.songs.length}곡')),
+                          DropdownButton<SongSetDetailSortMode>(
+                            key: const ValueKey('song-set-detail-sort'),
+                            value: detailSortMode,
+                            isDense: true,
+                            items: const [
+                              DropdownMenuItem(
+                                value: SongSetDetailSortMode.added,
+                                child: Text('등록'),
+                              ),
+                              DropdownMenuItem(
+                                value: SongSetDetailSortMode.titleAscending,
+                                child: Text('이름 오름'),
+                              ),
+                              DropdownMenuItem(
+                                value: SongSetDetailSortMode.titleDescending,
+                                child: Text('이름 내림'),
+                              ),
+                            ],
+                            onChanged: (mode) {
+                              if (mode == null) {
+                                return;
+                              }
+                              refreshDialog(() {
+                                detailSortMode = mode;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 8),
                       if (songSet.songs.isEmpty)
                         const Padding(
@@ -5351,11 +5756,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 right: songSetSongsCanScroll ? 8 : 0,
                               ),
                               shrinkWrap: true,
-                              itemCount: songSet.songs.length,
+                              itemCount: visibleSongs.length,
                               separatorBuilder: (context, index) =>
                                   const Divider(height: 8),
                               itemBuilder: (context, index) {
-                                final song = songSet.songs[index];
+                                final song = visibleSongs[index];
                                 return Row(
                                   children: [
                                     Expanded(

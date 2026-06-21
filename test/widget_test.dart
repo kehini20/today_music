@@ -159,12 +159,301 @@ void main() {
       'tdm_default_share_message': '공유 문구',
       'tdm_disabled_random_artists': <String>['KEY'],
       'tdm_last_add_song_tab': 'paste',
+      'tdm_artist_order': <String>['KEY'],
     });
 
     await SongStorage.resetAllAppData();
     final preferences = await SharedPreferences.getInstance();
 
     expect(preferences.getKeys(), isEmpty);
+  });
+
+  test('artist order removes deleted artists and appends new artists', () {
+    expect(
+      reconcileArtistOrder(
+        ['N.Flying', 'CNBLUE', 'Touched'],
+        ['CNBLUE', 'Deleted', 'N.Flying'],
+      ),
+      ['CNBLUE', 'N.Flying', 'Touched'],
+    );
+    expect(reconcileArtistOrder(['N.Flying', 'CNBLUE'], const []), isEmpty);
+  });
+
+  testWidgets('artist order editor uses drag handles without checkboxes', (
+    WidgetTester tester,
+  ) async {
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {
+        'tdm_alpha_songs':
+            '[{"artist":"N.Flying","title":"Blue Moon","tags":[]},'
+            '{"artist":"CNBLUE","title":"Loner","tags":[]},'
+            '{"artist":"ONEWE","title":"Rain To Be","tags":[]}]',
+        'sample_prompt_checked': true,
+      },
+    );
+
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+    expect(find.text('편집'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('artist-sort-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('사용자지정'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('가수 순서 편집'), findsWidgets);
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(3));
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.byType(Checkbox),
+      ),
+      findsNothing,
+    );
+    expect(find.text('기본 정렬로 되돌리기'), findsOneWidget);
+
+    await tester.drag(
+      find.byIcon(Icons.drag_handle).first,
+      const Offset(0, 180),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '저장'));
+    await tester.pumpAndSettle();
+
+    final preferences = await SharedPreferences.getInstance();
+    final savedOrder = preferences.getStringList('tdm_artist_order');
+    expect(savedOrder, hasLength(3));
+    expect(savedOrder, isNot(['N.Flying', 'CNBLUE', 'ONEWE']));
+    expect(find.text('사용자지정'), findsOneWidget);
+    expect(find.text('편집'), findsOneWidget);
+    final customToolbarRect = tester.getRect(
+      find.byKey(const ValueKey('artist-storage-toolbar')),
+    );
+    final editRect = tester.getRect(find.text('편집'));
+    final customAllSongsRect = tester.getRect(
+      find.byKey(const ValueKey('all-songs-button')),
+    );
+    expect(editRect.right, lessThan(customAllSongsRect.left));
+    expect(
+      (customToolbarRect.right - customAllSongsRect.right).abs(),
+      lessThan(1),
+    );
+  });
+
+  testWidgets('artist sort options use the compact dropdown labels', (
+    WidgetTester tester,
+  ) async {
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {
+        'tdm_alpha_songs':
+            '[{"artist":"N.Flying","title":"Blue Moon","tags":[]},'
+            '{"artist":"CNBLUE","title":"Loner","tags":[]}]',
+        'sample_prompt_checked': true,
+      },
+    );
+
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('정렬순서'), findsOneWidget);
+    expect(find.text('편집'), findsNothing);
+    expect(find.text('전체곡 보기'), findsOneWidget);
+    expect(find.byType(SegmentedButton<ArtistSortMode>), findsNothing);
+    final toolbarRect = tester.getRect(
+      find.byKey(const ValueKey('artist-storage-toolbar')),
+    );
+    final allSongsRect = tester.getRect(
+      find.byKey(const ValueKey('all-songs-button')),
+    );
+    expect((toolbarRect.right - allSongsRect.right).abs(), lessThan(1));
+
+    await tester.tap(find.byKey(const ValueKey('artist-sort-menu')));
+    await tester.pumpAndSettle();
+    final menuItems = find.descendant(
+      of: find.byType(PopupMenuItem<ArtistSortMode>),
+      matching: find.byType(Text),
+    );
+    expect(
+      tester
+          .widgetList<Text>(menuItems)
+          .map((text) => text.data)
+          .whereType<String>()
+          .toList(),
+      ['기본', '이름', '등록', '곡수', '사용자지정'],
+    );
+
+    await tester.tap(find.text('이름'));
+    await tester.pumpAndSettle();
+    expect(find.text('이름'), findsOneWidget);
+    expect(find.text('편집'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('artist-sort-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('사용자지정'));
+    await tester.pumpAndSettle();
+    expect(find.text('가수 순서 편집'), findsWidgets);
+    await tester.tap(find.widgetWithText(TextButton, '취소').last);
+    await tester.pumpAndSettle();
+    expect(find.text('이름'), findsOneWidget);
+    expect(find.text('편집'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('artist-sort-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('기본'));
+    await tester.pumpAndSettle();
+    expect(find.text('정렬순서'), findsOneWidget);
+  });
+
+  testWidgets(
+    'artist detail and all songs use registration and name dropdowns',
+    (WidgetTester tester) async {
+      await pumpTodayMusicApp(
+        tester,
+        initialValues: {
+          'tdm_alpha_songs':
+              '[{"artist":"N.Flying","title":"Zulu","tags":[]},'
+              '{"artist":"N.Flying","title":"Alpha","tags":[]},'
+              '{"artist":"CNBLUE","title":"Moon","tags":[]}]',
+          'sample_prompt_checked': true,
+        },
+      );
+
+      await tester.tap(find.text('노래 저장소'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('N.Flying'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('artist-song-sort')), findsOneWidget);
+      expect(find.text('추가순'), findsNothing);
+      expect(find.text('곡명순'), findsNothing);
+      expect(
+        tester.getTopLeft(find.text('Zulu')).dy,
+        lessThan(tester.getTopLeft(find.text('Alpha')).dy),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('artist-song-sort')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('이름').last);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('Alpha')).dy,
+        lessThan(tester.getTopLeft(find.text('Zulu')).dy),
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, '닫기').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('전체곡 보기'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('all-song-sort')), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('N.Flying - Zulu')).dy,
+        lessThan(tester.getTopLeft(find.text('N.Flying - Alpha')).dy),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('all-song-sort')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('이름').last);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('N.Flying - Alpha')).dy,
+        lessThan(tester.getTopLeft(find.text('CNBLUE - Moon')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('CNBLUE - Moon')).dy,
+        lessThan(tester.getTopLeft(find.text('N.Flying - Zulu')).dy),
+      );
+    },
+  );
+
+  testWidgets('song set detail sorting only changes the visible order', (
+    WidgetTester tester,
+  ) async {
+    const storedSet =
+        '[{"id":"set-1","name":"공연 세트","songs":['
+        '{"artist":"N.Flying","title":"Zulu","tags":[]},'
+        '{"artist":"N.Flying","title":"Alpha","tags":[]},'
+        '{"artist":"N.Flying","title":"Moon","tags":[]}'
+        ']}]';
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {
+        'tdm_alpha_songs':
+            '[{"artist":"N.Flying","title":"Zulu","tags":[]},'
+            '{"artist":"N.Flying","title":"Alpha","tags":[]},'
+            '{"artist":"N.Flying","title":"Moon","tags":[]}]',
+        'tdm_song_sets': storedSet,
+        'sample_prompt_checked': true,
+      },
+    );
+
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('세트저장소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('공연 세트'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('등록'), findsOneWidget);
+    expect(find.text('1. N.Flying - Zulu'), findsOneWidget);
+    expect(find.text('2. N.Flying - Alpha'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('song-set-detail-sort')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('이름 오름').last);
+    await tester.pumpAndSettle();
+    expect(find.text('1. N.Flying - Alpha'), findsOneWidget);
+    expect(find.text('3. N.Flying - Zulu'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('song-set-detail-sort')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('이름 내림').last);
+    await tester.pumpAndSettle();
+    expect(find.text('1. N.Flying - Zulu'), findsOneWidget);
+    expect(find.text('3. N.Flying - Alpha'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('song-set-detail-sort')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('등록').last);
+    await tester.pumpAndSettle();
+    expect(find.text('1. N.Flying - Zulu'), findsOneWidget);
+    expect(find.text('2. N.Flying - Alpha'), findsOneWidget);
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString('tdm_song_sets'), storedSet);
+  });
+
+  testWidgets('first pasted artist refreshes an empty storage sheet', (
+    WidgetTester tester,
+  ) async {
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {'tdm_alpha_songs': '[]', 'sample_prompt_checked': true},
+    );
+
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+    expect(find.text('총 0곡 · 가수명 0팀'), findsOneWidget);
+
+    await tester.tap(find.text('곡 추가'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('붙여넣기'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('paste-song-input')),
+      'N.Flying - Blue Moon',
+    );
+    await tester.tap(find.text('분석하기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('선택한 항목 저장'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '닫기').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('총 1곡 · 가수명 1팀'), findsOneWidget);
+    expect(find.text('N.Flying'), findsOneWidget);
   });
 
   testWidgets('missing artist and review candidates show gentle guidance', (
