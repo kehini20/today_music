@@ -16,6 +16,7 @@ import 'ocr/text_ocr_service.dart';
 import 'paste_parser.dart';
 import 'share_text.dart';
 import 'song.dart';
+import 'song_import.dart';
 import 'sponsor_ad.dart';
 
 void main() {
@@ -34,7 +35,7 @@ const Color tdmTextSub = Color(0xFF5F7474);
 const Color tdmBorder = Color(0xFFB7E8E1);
 const Color tdmLinkBlue = Color(0xFF3A8FC3);
 const int maxSongSetCount = 30;
-const String appDisplayVersion = 'Alpha 0.7.0';
+const String appDisplayVersion = 'Alpha 0.7.1';
 const String imageRecognitionHelpMessage =
     '셋리스트 이미지를 선택하면 이미지 속 글자를 읽어 곡 목록을 분석합니다. '
     '인식 결과가 정확하지 않을 수 있으므로 저장 전 가수명과 곡명을 확인해 주세요.';
@@ -1298,117 +1299,38 @@ class _TodaySongPageState extends State<TodaySongPage> {
         return;
       }
 
-      final existingKeys = _songs.map(_songDuplicateKey).toSet();
-      final songsToAdd = <Song>[];
-      var existingSongCount = 0;
-
-      for (final song in parsedSongs) {
-        final key = _songDuplicateKey(song);
-        if (existingKeys.contains(key)) {
-          existingSongCount++;
-          continue;
-        }
-
-        existingKeys.add(key);
-        songsToAdd.add(song);
-      }
-
-      if (songsToAdd.isEmpty) {
-        _showImportResultDialog('0곡 추가\n이미 저장된 목록입니다.');
-        return;
-      }
-
-      setState(() {
-        _songs.addAll(songsToAdd);
-        _syncArtistFilterState();
-      });
-      _saveSongs();
-      _saveDisabledRandomArtists();
-      onSongsImported?.call();
-
-      _showImportResultDialog(
-        _buildImportResultMessage(
-          addedCount: songsToAdd.length,
-          existingSongCount: existingSongCount,
+      final drafts = parsedSongs
+          .map(
+            (song) => PasteSongDraft(
+              sourceLine: '${song.artist} - ${song.title}',
+              artist: song.artist,
+              title: song.title,
+              tags: song.tags,
+              memo: song.memo,
+              link: song.link,
+            ),
+          )
+          .toList();
+      _showPasteSongAnalysisDialog(
+        PasteSongAnalysis(
+          inferredArtist: '',
+          drafts: drafts,
+          candidates: buildPasteSongCandidates(
+            drafts: drafts,
+            inferredArtist: '',
+            existingSongs: _songs,
+          ),
         ),
+        dialogTitle: 'TXT 불러오기 결과',
+        onSongsAdded: onSongsImported,
       );
     } catch (_) {
       _showImportResultDialog('불러오기에 실패했습니다.');
     }
   }
 
-  String _buildImportResultMessage({
-    required int addedCount,
-    required int existingSongCount,
-  }) {
-    if (existingSongCount == 0) {
-      return '$addedCount곡 추가되었습니다.';
-    }
-
-    return '$addedCount곡 추가되었습니다.\n이미 저장된 곡은 제외되었습니다.';
-  }
-
   List<Song> _parseImportedSongs(String text) {
-    final songs = <Song>[];
-    final currentFields = <String, String>{};
-
-    void flushSong() {
-      final artist = currentFields['artist']?.trim() ?? '';
-      final title = currentFields['title']?.trim() ?? '';
-
-      if (artist.isNotEmpty && title.isNotEmpty) {
-        songs.add(
-          Song(
-            artist: artist,
-            title: title,
-            memo: currentFields['memo']?.trim() ?? '',
-            tags: normalizeTagInput(currentFields['tags'] ?? ''),
-            link: currentFields['link']?.trim() ?? '',
-          ),
-        );
-      }
-
-      currentFields.clear();
-    }
-
-    for (final rawLine in const LineSplitter().convert(text)) {
-      final line = rawLine.trim();
-
-      if (line.isEmpty || line.startsWith('#')) {
-        continue;
-      }
-
-      if (line == '[곡]') {
-        flushSong();
-        continue;
-      }
-
-      final separatorIndex = line.indexOf(':');
-      if (separatorIndex == -1) {
-        continue;
-      }
-
-      final key = line.substring(0, separatorIndex).trim();
-      final value = line.substring(separatorIndex + 1).trim();
-
-      switch (key) {
-        case '가수':
-        case '가수명':
-          currentFields['artist'] = value;
-        case '제목':
-          currentFields['title'] = value;
-        case '메모':
-          currentFields['memo'] = value;
-        case '태그':
-          currentFields['tags'] = value;
-        case '링크':
-          currentFields['link'] = value;
-      }
-    }
-
-    flushSong();
-
-    return songs;
+    return parseTdmSongText(text);
   }
 
   String _songDuplicateKey(Song song) {
@@ -3211,12 +3133,14 @@ class _TodaySongPageState extends State<TodaySongPage> {
     PasteSongAnalysis analysis, {
     List<String?> titleAlternatives = const [],
     VoidCallback? onSongsAdded,
+    String dialogTitle = '분석 결과',
   }) {
     final inferredArtistController = TextEditingController(
       text: analysis.inferredArtist,
     );
     final drafts = analysis.drafts.toList();
     final excludedIndexes = <int>{};
+    final selectedUpdateIndexes = <int>{};
 
     showDialog<void>(
       context: context,
@@ -3240,6 +3164,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       candidate.status == PasteSongCandidateStatus.existing,
                 )
                 .length;
+            final updateAvailableCount = candidates
+                .where(
+                  (candidate) =>
+                      candidate.status ==
+                      PasteSongCandidateStatus.updateAvailable,
+                )
+                .length;
             final needsReviewCount = candidates
                 .where(
                   (candidate) =>
@@ -3249,15 +3180,18 @@ class _TodaySongPageState extends State<TodaySongPage> {
             final hasUnconfirmedArtist =
                 inferredArtistController.text.trim().isEmpty &&
                 candidates.any((candidate) => candidate.song == null);
-            final selectedNewSongCount = candidates
-                .asMap()
-                .entries
-                .where(
-                  (entry) =>
-                      entry.value.status == PasteSongCandidateStatus.newSong &&
-                      !excludedIndexes.contains(entry.key),
-                )
-                .length;
+            final selectedCandidateCount = candidates.asMap().entries.where((
+              entry,
+            ) {
+              if (entry.value.status == PasteSongCandidateStatus.newSong) {
+                return !excludedIndexes.contains(entry.key);
+              }
+              if (entry.value.status ==
+                  PasteSongCandidateStatus.updateAvailable) {
+                return selectedUpdateIndexes.contains(entry.key);
+              }
+              return false;
+            }).length;
             String currentCandidateTitle(
               int index,
               PasteSongCandidate candidate,
@@ -3280,6 +3214,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 sourceLine: draft.sourceLine,
                 artist: draft.artist ?? candidate.song?.artist,
                 title: title.trim(),
+                tags: draft.tags,
+                memo: draft.memo,
+                link: draft.link,
                 usesInferredArtist:
                     draft.usesInferredArtist ||
                     (!hasOwnArtist &&
@@ -3379,7 +3316,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
             );
 
             return AlertDialog(
-              title: const Text('\uBD84\uC11D \uACB0\uACFC'),
+              title: Text(dialogTitle),
               actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
               buttonPadding: EdgeInsets.zero,
               insetPadding: const EdgeInsets.symmetric(
@@ -3408,7 +3345,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
                     const SizedBox(height: 8),
                     Text(
                       '\uC0C8 \uACE1 $newSongCount\uACE1 \u00B7 '
-                      '\uC774\uBBF8 \uC788\uC74C $existingCount\uACE1 \u00B7 '
+                      '업데이트 가능 $updateAvailableCount곡 · '
+                      '동일함 $existingCount곡 · '
                       '\uD655\uC778 \uD544\uC694 $needsReviewCount\uACE1',
                       style: const TextStyle(
                         color: tdmTextSub,
@@ -3454,10 +3392,17 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 final song = candidate.song;
                                 final canInclude =
                                     candidate.status ==
-                                    PasteSongCandidateStatus.newSong;
-                                final isIncluded =
-                                    canInclude &&
-                                    !excludedIndexes.contains(index);
+                                        PasteSongCandidateStatus.newSong ||
+                                    candidate.status ==
+                                        PasteSongCandidateStatus
+                                            .updateAvailable;
+                                final isIncluded = switch (candidate.status) {
+                                  PasteSongCandidateStatus.newSong =>
+                                    !excludedIndexes.contains(index),
+                                  PasteSongCandidateStatus.updateAvailable =>
+                                    selectedUpdateIndexes.contains(index),
+                                  _ => false,
+                                };
                                 final colorScheme = Theme.of(
                                   context,
                                 ).colorScheme;
@@ -3474,9 +3419,25 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                         ? (value) {
                                             refreshDialog(() {
                                               if (value ?? false) {
-                                                excludedIndexes.remove(index);
+                                                if (candidate.status ==
+                                                    PasteSongCandidateStatus
+                                                        .newSong) {
+                                                  excludedIndexes.remove(index);
+                                                } else {
+                                                  selectedUpdateIndexes.add(
+                                                    index,
+                                                  );
+                                                }
                                               } else {
-                                                excludedIndexes.add(index);
+                                                if (candidate.status ==
+                                                    PasteSongCandidateStatus
+                                                        .newSong) {
+                                                  excludedIndexes.add(index);
+                                                } else {
+                                                  selectedUpdateIndexes.remove(
+                                                    index,
+                                                  );
+                                                }
                                               }
                                             });
                                           }
@@ -3518,6 +3479,37 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                       ),
                                     ),
                                   ),
+                                  subtitle: candidate.changes.isEmpty
+                                      ? candidate.status ==
+                                                PasteSongCandidateStatus
+                                                    .existing
+                                            ? const Text(
+                                                '변경 없음',
+                                                style: TextStyle(
+                                                  color: tdmTextSub,
+                                                  fontSize: 11,
+                                                ),
+                                              )
+                                            : null
+                                      : Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 2,
+                                          ),
+                                          child: Text(
+                                            candidate.changes
+                                                .map(
+                                                  (change) =>
+                                                      change.description,
+                                                )
+                                                .join('\n'),
+                                            maxLines: 4,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: tdmTextSub,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ),
                                   trailing: Text(
                                     candidate.statusLabel,
                                     style: TextStyle(
@@ -3537,23 +3529,35 @@ class _TodaySongPageState extends State<TodaySongPage> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
-                        onPressed: selectedNewSongCount == 0
+                        onPressed: selectedCandidateCount == 0
                             ? null
                             : () {
                                 final selectedCandidates = candidates
                                     .asMap()
                                     .entries
-                                    .where(
-                                      (entry) =>
-                                          !excludedIndexes.contains(entry.key),
-                                    )
+                                    .where((entry) {
+                                      if (entry.value.status ==
+                                          PasteSongCandidateStatus.newSong) {
+                                        return !excludedIndexes.contains(
+                                          entry.key,
+                                        );
+                                      }
+                                      if (entry.value.status ==
+                                          PasteSongCandidateStatus
+                                              .updateAvailable) {
+                                        return selectedUpdateIndexes.contains(
+                                          entry.key,
+                                        );
+                                      }
+                                      return false;
+                                    })
                                     .map((entry) => entry.value)
                                     .toList();
-                                final addedCount = _addPastedNewSongs(
+                                final result = _applySelectedSongImports(
                                   selectedCandidates,
-                                  showSnackBar: false,
                                 );
-                                if (addedCount == 0) {
+                                if (result.addedCount == 0 &&
+                                    result.updatedCount == 0) {
                                   return;
                                 }
 
@@ -3562,11 +3566,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 _runAfterRouteSettled(() {
                                   onSongsAdded?.call();
                                   _showRootSnackBar(
-                                    '\uC120\uD0DD\uD55C \uACE1\uC744 \uCD94\uAC00\uD588\uC5B4\uC694.',
+                                    '새 곡 ${result.addedCount}곡 추가, '
+                                    '기존 곡 ${result.updatedCount}곡 업데이트, '
+                                    '동일한 곡 $existingCount곡 건너뜀',
                                   );
                                 });
                               },
-                        child: const Text('\uC120\uD0DD\uACE1 \uCD94\uAC00'),
+                        child: const Text('선택한 항목 저장'),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -3598,6 +3604,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
     switch (status) {
       case PasteSongCandidateStatus.newSong:
         return colorScheme.primary;
+      case PasteSongCandidateStatus.updateAvailable:
+        return colorScheme.tertiary;
       case PasteSongCandidateStatus.existing:
         return colorScheme.onSurfaceVariant;
       case PasteSongCandidateStatus.needsReview:
@@ -3605,47 +3613,76 @@ class _TodaySongPageState extends State<TodaySongPage> {
     }
   }
 
-  int _addPastedNewSongs(
-    List<PasteSongCandidate> candidates, {
-    VoidCallback? onSongsAdded,
-    bool showSnackBar = true,
-  }) {
-    final songsToAdd = candidates
-        .where(
-          (candidate) => candidate.status == PasteSongCandidateStatus.newSong,
-        )
-        .map((candidate) => candidate.song)
-        .nonNulls
-        .toList();
-    final existingCount = candidates
-        .where(
-          (candidate) => candidate.status == PasteSongCandidateStatus.existing,
-        )
-        .length;
-
-    if (songsToAdd.isEmpty) {
-      if (showSnackBar) {
-        _showRootSnackBar(
-          '\uC0C8\uB85C \uCD94\uAC00\uD560 \uACE1\uC774 \uC5C6\uC5B4\uC694.',
-        );
-      }
-      return 0;
-    }
-
+  ({int addedCount, int updatedCount}) _applySelectedSongImports(
+    List<PasteSongCandidate> candidates,
+  ) {
+    var addedCount = 0;
+    var updatedCount = 0;
     setState(() {
-      _songs.addAll(songsToAdd);
-    });
-    _saveSongs();
-    onSongsAdded?.call();
+      for (final candidate in candidates) {
+        final incoming = candidate.song;
+        if (incoming == null) {
+          continue;
+        }
 
-    if (showSnackBar) {
-      final message = existingCount == 0
-          ? '\uC0C8 \uACE1 ${songsToAdd.length}\uAC1C\uB97C \uCD94\uAC00\uD588\uC5B4\uC694.'
-          : '\uC0C8 \uACE1 ${songsToAdd.length}\uAC1C\uB97C \uCD94\uAC00\uD588\uC5B4\uC694. \uC774\uBBF8 \uC788\uB294 \uACE1 $existingCount\uAC1C\uB294 \uC81C\uC678\uD588\uC5B4\uC694.';
-      _showRootSnackBar(message);
+        if (candidate.status == PasteSongCandidateStatus.newSong) {
+          if (findMatchingSong(incoming, _songs) == null) {
+            _songs.add(incoming);
+            addedCount++;
+          }
+          continue;
+        }
+
+        if (candidate.status != PasteSongCandidateStatus.updateAvailable) {
+          continue;
+        }
+
+        final matchingSong = findMatchingSong(incoming, _songs);
+        if (matchingSong == null) {
+          continue;
+        }
+        final index = _songs.indexWhere(
+          (song) => identical(song, matchingSong),
+        );
+        if (index == -1) {
+          continue;
+        }
+
+        final originalSong = _songs[index];
+        final updatedSong = mergeImportedSong(
+          originalSong,
+          incoming,
+        ).copyWith(isFavorite: originalSong.isFavorite);
+        if (updatedSong.link == originalSong.link &&
+            updatedSong.memo == originalSong.memo &&
+            listEquals(updatedSong.tags, originalSong.tags)) {
+          continue;
+        }
+
+        _songs[index] = updatedSong;
+        _replaceSongInSets(originalSong, updatedSong);
+        if (_selectedSong != null &&
+            _isSameSongResult(_selectedSong!, originalSong)) {
+          _selectedSong = updatedSong;
+          _lastResultSong = updatedSong;
+          _resetShareText(updatedSong);
+        } else if (_lastResultSong != null &&
+            _isSameSongResult(_lastResultSong!, originalSong)) {
+          _lastResultSong = updatedSong;
+        }
+        updatedCount++;
+      }
+      _syncArtistFilterState();
+    });
+
+    if (addedCount == 0 && updatedCount == 0) {
+      return (addedCount: 0, updatedCount: 0);
     }
 
-    return songsToAdd.length;
+    _saveSongs();
+    _saveDisabledRandomArtists();
+    _saveSongSets();
+    return (addedCount: addedCount, updatedCount: updatedCount);
   }
 
   void _showEditSongDialog(Song song, {VoidCallback? onSongUpdated}) {

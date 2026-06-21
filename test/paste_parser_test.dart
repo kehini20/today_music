@@ -161,6 +161,33 @@ Autumn Dream
       );
     });
 
+    test('classifies pasted TDM metadata as an update candidate', () {
+      final analysis = parsePastedSongText(
+        text: '''
+[곡]
+가수명: N.Flying
+제목: Flowerwork
+메모:
+태그: #엔플라잉 #승협
+링크: https://example.com/flowerwork
+''',
+        existingSongs: const [
+          Song(artist: 'N.Flying', title: 'Flowerwork', tags: ['#엔플라잉']),
+        ],
+      );
+
+      expect(analysis.candidates, hasLength(1));
+      expect(
+        analysis.candidates.single.status,
+        PasteSongCandidateStatus.updateAvailable,
+      );
+      expect(analysis.candidates.single.mergedSong?.tags, ['#엔플라잉', '#승협']);
+      expect(analysis.candidates.single.changes.map((change) => change.field), [
+        '링크',
+        '태그',
+      ]);
+    });
+
     test('handles OCR setlist headers, split numbers, and encore suffixes', () {
       final analysis = parsePastedSongText(
         text: '''

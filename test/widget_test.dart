@@ -6,12 +6,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:today_music/main.dart';
 
 void main() {
-  Future<void> pumpTodayMusicApp(WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({
-      'tdm_alpha_songs':
-          '[{"artist":"N.Flying","title":"Blue Moon","tags":[],"memo":"","link":"","isFavorite":false}]',
-      'sample_prompt_checked': true,
-    });
+  Future<void> pumpTodayMusicApp(
+    WidgetTester tester, {
+    Map<String, Object>? initialValues,
+  }) async {
+    SharedPreferences.setMockInitialValues(
+      initialValues ??
+          {
+            'tdm_alpha_songs':
+                '[{"artist":"N.Flying","title":"Blue Moon","tags":[],"memo":"","link":"","isFavorite":false}]',
+            'sample_prompt_checked': true,
+          },
+    );
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
@@ -139,9 +145,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('확인이 필요한 곡이 있어요.'), findsOneWidget);
-    expect(find.text('선택곡 추가'), findsOneWidget);
+    expect(find.text('선택한 항목 저장'), findsOneWidget);
     final addButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '선택곡 추가'),
+      find.widgetWithText(FilledButton, '선택한 항목 저장'),
     );
     expect(addButton.onPressed, isNull);
 
@@ -156,8 +162,57 @@ void main() {
       findsNothing,
     );
     final enabledAddButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '선택곡 추가'),
+      find.widgetWithText(FilledButton, '선택한 항목 저장'),
     );
     expect(enabledAddButton.onPressed, isNotNull);
+  });
+
+  testWidgets('selected update candidate merges metadata without clearing memo', (
+    WidgetTester tester,
+  ) async {
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {
+        'tdm_alpha_songs':
+            '[{"artist":"N.Flying","title":"Flowerwork","tags":["#엔플라잉"],"memo":"기존 메모","link":"","isFavorite":true}]',
+        'sample_prompt_checked': true,
+      },
+    );
+
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('곡 추가'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('붙여넣기'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('paste-song-input')), '''
+[곡]
+가수명: N.Flying
+제목: Flowerwork
+메모:
+태그: #엔플라잉 #승협
+링크: https://example.com/flowerwork
+''');
+    await tester.tap(find.text('분석하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('업데이트 가능 1곡'), findsOneWidget);
+    expect(find.text('업데이트 가능'), findsOneWidget);
+    expect(find.textContaining('링크: 비어 있음'), findsOneWidget);
+
+    final checkbox = tester.widget<Checkbox>(find.byType(Checkbox).last);
+    expect(checkbox.value, isFalse);
+    await tester.tap(find.byType(Checkbox).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('선택한 항목 저장'));
+    await tester.pumpAndSettle();
+
+    final preferences = await SharedPreferences.getInstance();
+    final stored = preferences.getString('tdm_alpha_songs')!;
+    expect(stored, contains('"memo":"기존 메모"'));
+    expect(stored, contains('"link":"https://example.com/flowerwork"'));
+    expect(stored, contains('"tags":["#엔플라잉","#승협"]'));
+    expect(stored, contains('"isFavorite":true'));
   });
 }

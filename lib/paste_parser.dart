@@ -2,26 +2,40 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'song.dart';
+import 'song_import.dart';
 
-enum PasteSongCandidateStatus { newSong, existing, needsReview }
+enum PasteSongCandidateStatus {
+  newSong,
+  updateAvailable,
+  existing,
+  needsReview,
+}
 
 class PasteSongCandidate {
   final String sourceLine;
   final Song? song;
+  final Song? existingSong;
+  final Song? mergedSong;
   final PasteSongCandidateStatus status;
+  final List<SongImportChange> changes;
 
   const PasteSongCandidate({
     required this.sourceLine,
     required this.song,
     required this.status,
+    this.existingSong,
+    this.mergedSong,
+    this.changes = const [],
   });
 
   String get statusLabel {
     switch (status) {
       case PasteSongCandidateStatus.newSong:
         return '\uC0C8 \uACE1';
+      case PasteSongCandidateStatus.updateAvailable:
+        return '업데이트 가능';
       case PasteSongCandidateStatus.existing:
-        return '\uC774\uBBF8 \uC788\uC74C';
+        return '동일함';
       case PasteSongCandidateStatus.needsReview:
         return '\uD655\uC778 \uD544\uC694';
     }
@@ -32,6 +46,9 @@ class PasteSongDraft {
   final String sourceLine;
   final String? artist;
   final String? title;
+  final List<String> tags;
+  final String memo;
+  final String link;
   final bool usesInferredArtist;
   final bool needsReview;
 
@@ -39,6 +56,9 @@ class PasteSongDraft {
     required this.sourceLine,
     this.artist,
     this.title,
+    this.tags = const [],
+    this.memo = '',
+    this.link = '',
     this.usesInferredArtist = false,
     this.needsReview = false,
   });
@@ -128,6 +148,29 @@ class _PasteSongParser {
   });
 
   PasteSongAnalysis parse(String text) {
+    final importedSongs = parseTdmSongText(text);
+    if (importedSongs.isNotEmpty) {
+      final artists = importedSongs.map((song) => song.artist).toSet();
+      final inferredArtist = artists.length == 1 ? artists.single : '';
+      final drafts = importedSongs
+          .map(
+            (song) => PasteSongDraft(
+              sourceLine: '${song.artist} - ${song.title}',
+              artist: song.artist,
+              title: song.title,
+              tags: song.tags,
+              memo: song.memo,
+              link: song.link,
+            ),
+          )
+          .toList();
+      return PasteSongAnalysis(
+        inferredArtist: inferredArtist,
+        drafts: drafts,
+        candidates: buildCandidates(drafts, inferredArtist),
+      );
+    }
+
     final originalLines = _mergeNumberOnlyLines(
       const LineSplitter().convert(text),
     );
@@ -255,12 +298,7 @@ class _PasteSongParser {
     String inferredArtist,
   ) {
     final candidates = <PasteSongCandidate>[];
-    final existingKeys = existingSongs.map(_songDuplicateKey).toSet();
-    final existingNormalizedKeys = existingSongs
-        .map(_pasteSongDuplicateKey)
-        .toSet();
-    final seenKeys = <String>{};
-    final seenNormalizedKeys = <String>{};
+    final comparisonSongs = existingSongs.toList();
     final normalizedInferredArtist = inferredArtist.trim();
 
     for (final draft in drafts) {
@@ -279,27 +317,52 @@ class _PasteSongParser {
         continue;
       }
 
-      final parsedSong = Song(artist: artist, title: title, tags: const []);
-      final key = _songDuplicateKey(parsedSong);
-      final normalizedKey = _pasteSongDuplicateKey(parsedSong);
-      final isExactDuplicate =
-          existingKeys.contains(key) || seenKeys.contains(key);
-      final isSimilarDuplicate =
-          existingNormalizedKeys.contains(normalizedKey) ||
-          seenNormalizedKeys.contains(normalizedKey);
-      final status = isExactDuplicate || isSimilarDuplicate
-          ? PasteSongCandidateStatus.existing
-          : PasteSongCandidateStatus.newSong;
-      seenKeys.add(key);
-      seenNormalizedKeys.add(normalizedKey);
+      final parsedSong = Song(
+        artist: artist,
+        title: title,
+        tags: draft.tags,
+        memo: draft.memo,
+        link: draft.link,
+      );
+      final importedCandidate = classifyImportedSong(
+        incoming: parsedSong,
+        existingSongs: comparisonSongs,
+      );
+      final status = switch (importedCandidate.status) {
+        SongImportCandidateStatus.newSong => PasteSongCandidateStatus.newSong,
+        SongImportCandidateStatus.updateAvailable =>
+          PasteSongCandidateStatus.updateAvailable,
+        SongImportCandidateStatus.identical =>
+          PasteSongCandidateStatus.existing,
+        SongImportCandidateStatus.needsReview =>
+          PasteSongCandidateStatus.needsReview,
+      };
 
       candidates.add(
         PasteSongCandidate(
           sourceLine: draft.sourceLine,
           song: parsedSong,
           status: status,
+          existingSong: importedCandidate.existingSong,
+          mergedSong: importedCandidate.mergedSong,
+          changes: importedCandidate.changes,
         ),
       );
+
+      if (status == PasteSongCandidateStatus.newSong) {
+        comparisonSongs.add(parsedSong);
+      } else if (status == PasteSongCandidateStatus.updateAvailable) {
+        final existing = importedCandidate.existingSong;
+        final merged = importedCandidate.mergedSong;
+        if (existing != null && merged != null) {
+          final index = comparisonSongs.indexWhere(
+            (song) => identical(song, existing),
+          );
+          if (index != -1) {
+            comparisonSongs[index] = merged;
+          }
+        }
+      }
     }
 
     return candidates;
@@ -1740,31 +1803,6 @@ class _PasteSongParser {
 
   bool _matchesKnownArtist(String value, Set<String> knownArtists) {
     return knownArtists.contains(value.trim().toLowerCase());
-  }
-
-  String _songDuplicateKey(Song song) {
-    return '${song.artist.trim().toLowerCase()}\n'
-        '${song.title.trim().toLowerCase()}';
-  }
-
-  String _pasteSongDuplicateKey(Song song) {
-    return '${_normalizePasteCompareText(song.artist)}|${_normalizePasteTitle(song.title)}';
-  }
-
-  String _normalizePasteCompareText(String value) {
-    return value
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .replaceAll(RegExp(r'''[“”"'`´]'''), '');
-  }
-
-  String _normalizePasteTitle(String title) {
-    return _normalizePasteCompareText(
-      title
-          .replaceAll(RegExp(r'\([^)]*\)|（[^）]*）|\[[^\]]*\]'), ' ')
-          .replaceAll(RegExp(r'[~!@#$%^&*_+=|\\<>?;:,.·ㆍ]'), ' '),
-    );
   }
 }
 
