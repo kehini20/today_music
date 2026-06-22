@@ -38,6 +38,8 @@ const Color tdmBorder = Color(0xFFB7E8E1);
 const Color tdmLinkBlue = Color(0xFF3A8FC3);
 const Color updateAvailableColor = Color(0xFF5B8DEF);
 const int maxSongSetCount = 30;
+const int maxSongMemoLength = 140;
+const int maxSongTagCount = 10;
 const String appSemanticVersion = '0.7.6';
 const String appDisplayVersion = 'Alpha 0.7.6';
 const String songTxtImportGuidance =
@@ -89,6 +91,40 @@ String buildSongsExportFileBaseName(DateTime timestamp, {String? artist}) {
 
 String buildSetsExportFileBaseName(DateTime timestamp) {
   return 'tdm_sets_${buildExportTimestamp(timestamp)}';
+}
+
+String normalizeSongMemo(String value) {
+  final trimmed = value.trim();
+  return trimmed.length <= maxSongMemoLength
+      ? trimmed
+      : trimmed.substring(0, maxSongMemoLength);
+}
+
+String buildSongCardTagSummary(List<String> tags, {int maxCharacters = 56}) {
+  final visible = visibleSongTags(tags).take(maxSongTagCount).toList();
+  if (visible.isEmpty) {
+    return '';
+  }
+
+  final shown = <String>[];
+  for (final tag in visible) {
+    final candidate = [...shown, tag].join(' ');
+    final remaining = visible.length - shown.length - 1;
+    final suffix = remaining > 0 ? ' +$remaining' : '';
+    if (shown.isNotEmpty && candidate.length + suffix.length > maxCharacters) {
+      break;
+    }
+    shown.add(tag);
+  }
+
+  var hiddenCount = visible.length - shown.length;
+  while (hiddenCount > 0 &&
+      shown.length > 1 &&
+      '${shown.join(' ')} +$hiddenCount'.length > maxCharacters) {
+    shown.removeLast();
+    hiddenCount++;
+  }
+  return hiddenCount > 0 ? '${shown.join(' ')} +$hiddenCount' : shown.join(' ');
 }
 
 List<String> reconcileArtistOrder(
@@ -1283,13 +1319,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
               currentSong,
             ).length;
             final visibleTags = visibleSongTags(currentSong.tags);
-            final supportingText = currentSong.memo.trim().isNotEmpty
-                ? currentSong.memo.trim()
-                : visibleTags.isNotEmpty
-                ? visibleTags.take(3).join(' ')
-                : matchingSetCount > 0
-                ? '포함된 세트 $matchingSetCount개'
-                : null;
+            final memoText = currentSong.memo.trim();
+            final tagSummary = buildSongCardTagSummary(visibleTags);
+            final showSetCount =
+                memoText.isEmpty && tagSummary.isEmpty && matchingSetCount > 0;
 
             void closeThen(VoidCallback action) {
               Navigator.of(cardContext).pop();
@@ -1417,18 +1450,46 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           ),
                         ),
                       ),
-                      if (supportingText != null)
+                      if (memoText.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
                           child: Text(
-                            supportingText,
-                            key: const ValueKey('song-card-supporting'),
+                            memoText,
+                            key: const ValueKey('song-card-memo'),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: tdmTextSub,
                               fontSize: 13,
                               height: 1.35,
+                            ),
+                          ),
+                        ),
+                      if (tagSummary.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                          child: Text(
+                            tagSummary,
+                            key: const ValueKey('song-card-tags'),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: tdmPrimaryDark,
+                              fontSize: 13,
+                              height: 1.35,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      if (showSetCount)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                          child: Text(
+                            '포함된 세트 $matchingSetCount개',
+                            key: const ValueKey('song-card-set-count'),
+                            style: const TextStyle(
+                              color: tdmTextSub,
+                              fontSize: 13,
                             ),
                           ),
                         ),
@@ -3386,7 +3447,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
               final song = Song(
                 artist: artist,
                 title: title,
-                memo: memoController.text.trim(),
+                memo: normalizeSongMemo(memoController.text),
                 tags: normalizeTagInput(tagsController.text),
                 link: linkController.text.trim(),
               );
@@ -3781,9 +3842,18 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                   TextField(
                                     controller: memoController,
                                     maxLines: 3,
-                                    decoration: const InputDecoration(
+                                    maxLength: maxSongMemoLength,
+                                    inputFormatters: [
+                                      LengthLimitingTextInputFormatter(
+                                        maxSongMemoLength,
+                                      ),
+                                    ],
+                                    onChanged: (_) => refreshDialog(() {}),
+                                    decoration: InputDecoration(
                                       labelText: '\uBA54\uBAA8',
-                                      border: OutlineInputBorder(),
+                                      border: const OutlineInputBorder(),
+                                      counterText:
+                                          '${memoController.text.characters.length}/$maxSongMemoLength자',
                                     ),
                                   ),
                                   const SizedBox(height: 12),
@@ -7320,12 +7390,22 @@ class HelpIconButton extends StatelessWidget {
 }
 
 List<String> normalizeTagInput(String text) {
-  return text
-      .split(RegExp(r'\s+'))
-      .map((tag) => tag.trim())
-      .where((tag) => tag.isNotEmpty)
-      .map((tag) => tag.startsWith('#') ? tag : '#$tag')
-      .toList();
+  final result = <String>[];
+  final seen = <String>{};
+  for (final rawTag in text.split(RegExp(r'\s+'))) {
+    final trimmed = rawTag.trim();
+    if (trimmed.isEmpty) {
+      continue;
+    }
+    final tag = trimmed.startsWith('#') ? trimmed : '#$trimmed';
+    if (seen.add(tag.toLowerCase())) {
+      result.add(tag);
+      if (result.length == maxSongTagCount) {
+        break;
+      }
+    }
+  }
+  return result;
 }
 
 List<String> visibleSongTags(List<String> tags) {
@@ -7350,16 +7430,15 @@ class _HashTagTextFieldState extends State<HashTagTextField> {
     }
 
     final original = widget.controller.text;
-    if (!original.contains(' ')) {
-      return;
-    }
-
     final hasTrailingSpace = RegExp(r'\s$').hasMatch(original);
     final formattedTags = normalizeTagInput(original);
     final formatted =
         '${formattedTags.join(' ')}${hasTrailingSpace ? ' ' : ''}';
 
     if (formatted == original) {
+      if (mounted) {
+        setState(() {});
+      }
       return;
     }
 
@@ -7369,6 +7448,9 @@ class _HashTagTextFieldState extends State<HashTagTextField> {
       selection: TextSelection.collapsed(offset: formatted.length),
     );
     _isFormatting = false;
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -7387,9 +7469,11 @@ class _HashTagTextFieldState extends State<HashTagTextField> {
   Widget build(BuildContext context) {
     return TextField(
       controller: widget.controller,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         labelText: '해시태그',
-        border: OutlineInputBorder(),
+        border: const OutlineInputBorder(),
+        counterText:
+            '${normalizeTagInput(widget.controller.text).length}/$maxSongTagCount개',
       ),
     );
   }
@@ -7471,7 +7555,7 @@ class _AddSongDialogState extends State<AddSongDialog> {
       artist: artist,
       title: title,
       tags: tags,
-      memo: _memoController.text.trim(),
+      memo: normalizeSongMemo(_memoController.text),
       link: _linkController.text.trim(),
     );
 
@@ -7541,7 +7625,7 @@ class _AddSongDialogState extends State<AddSongDialog> {
           ? _titleController.text.trim()
           : initialSong?.title ?? '',
       tags: normalizeTagInput(_tagsController.text),
-      memo: _memoController.text.trim(),
+      memo: normalizeSongMemo(_memoController.text),
       link: _linkController.text.trim(),
     );
   }
@@ -7591,9 +7675,16 @@ class _AddSongDialogState extends State<AddSongDialog> {
               TextField(
                 controller: _memoController,
                 maxLines: 3,
-                decoration: const InputDecoration(
+                maxLength: maxSongMemoLength,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(maxSongMemoLength),
+                ],
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
                   labelText: '메모',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  counterText:
+                      '${_memoController.text.characters.length}/$maxSongMemoLength자',
                 ),
               ),
               const SizedBox(height: 12),
@@ -8198,12 +8289,25 @@ class SongResultCard extends StatelessWidget {
           if (song!.memo.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(
-              song!.memo,
+              normalizeSongMemo(song!.memo),
               style: TextStyle(
                 color: colorScheme.onPrimaryContainer,
                 fontSize: 15,
                 height: 1.4,
                 fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+          if (visibleSongTags(song!.tags).isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              visibleSongTags(song!.tags).take(maxSongTagCount).join(' '),
+              key: const ValueKey('result-song-tags'),
+              style: TextStyle(
+                color: colorScheme.onPrimaryContainer,
+                fontSize: 14,
+                height: 1.4,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],

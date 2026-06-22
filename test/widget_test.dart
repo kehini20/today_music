@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:today_music/main.dart';
+import 'package:today_music/song.dart';
 
 void main() {
   Future<void> pumpTodayMusicApp(
@@ -174,6 +175,40 @@ void main() {
     expect(songTxtImportGuidance, contains('앱 전체 백업 JSON 파일'));
     expect(appBackupImportGuidance, contains('앱 전체 백업 JSON 파일'));
     expect(appBackupImportGuidance, contains('곡 목록 TXT 파일'));
+  });
+
+  test('memo and hashtag normalization enforce input limits', () {
+    expect(
+      normalizeSongMemo(List.filled(160, 'a').join()),
+      hasLength(maxSongMemoLength),
+    );
+    expect(
+      normalizeTagInput(
+        'one #two ONE three four five six seven eight nine ten eleven',
+      ),
+      [
+        '#one',
+        '#two',
+        '#three',
+        '#four',
+        '#five',
+        '#six',
+        '#seven',
+        '#eight',
+        '#nine',
+        '#ten',
+      ],
+    );
+    expect(
+      buildSongCardTagSummary([
+        '#verylongtagone',
+        '#verylongtagtwo',
+        '#verylongtagthree',
+        '#verylongtagfour',
+        '#verylongtagfive',
+      ], maxCharacters: 36),
+      contains(RegExp(r'\+\d+$')),
+    );
   });
 
   test('app reset removes every persisted app data key', () async {
@@ -398,7 +433,7 @@ void main() {
     WidgetTester tester,
   ) async {
     const songsJson =
-        '[{"artist":"N.Flying","title":"Linked","tags":[],"memo":"Japan 1st Full Album BROTHERHOOD","link":"https://example.com"},'
+        '[{"artist":"N.Flying","title":"Linked","tags":["#verylongtagone","#verylongtagtwo","#verylongtagthree","#verylongtagfour","#verylongtagfive"],"memo":"Japan 1st Full Album BROTHERHOOD","link":"https://example.com"},'
         '{"artist":"N.Flying","title":"Search","tags":[],"link":""}]';
     const setsJson =
         '[{"id":"set-1","name":"공연 세트","songs":['
@@ -460,6 +495,17 @@ void main() {
       ),
       findsOneWidget,
     );
+    final cardTags = tester.widget<Text>(
+      find.descendant(
+        of: songCard,
+        matching: find.byKey(const ValueKey('song-card-tags')),
+      ),
+    );
+    expect(cardTags.data, contains('#verylongtagone'));
+    expect(cardTags.data, contains(RegExp(r'\+\d+$')));
+    expect(cardTags.maxLines, 2);
+    expect(find.textContaining('/140자'), findsNothing);
+    expect(find.textContaining('/10개'), findsNothing);
     expect(
       find.descendant(of: songCard, matching: find.byTooltip('즐겨찾기 해제')),
       findsOneWidget,
@@ -506,6 +552,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('곡 수정하기'), findsOneWidget);
     final editDialog = find.byType(AlertDialog).last;
+    expect(find.text('32/140자'), findsOneWidget);
+    expect(find.text('5/10개'), findsOneWidget);
+    final editTextFields = find.descendant(
+      of: editDialog,
+      matching: find.byType(TextField),
+    );
+    final memoField = editTextFields.at(2);
+    final tagField = editTextFields.at(3);
+    await tester.enterText(memoField, List.filled(160, 'm').join());
+    await tester.enterText(
+      tagField,
+      'one two three four five six seven eight nine ten eleven twelve',
+    );
+    await tester.pump();
+    expect(find.text('140/140자'), findsOneWidget);
+    expect(find.text('10/10개'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(memoField).controller!.text,
+      hasLength(140),
+    );
+    expect(
+      normalizeTagInput(tester.widget<TextField>(tagField).controller!.text),
+      hasLength(10),
+    );
     expect(
       find.descendant(of: editDialog, matching: find.byTooltip('링크 열기')),
       findsOneWidget,
@@ -635,6 +705,33 @@ void main() {
     expect(find.text('검색'), findsOneWidget);
     expect(find.text('#concert'), findsOneWidget);
   });
+
+  testWidgets(
+    'result card shows full memo and up to ten hashtags without counters',
+    (WidgetTester tester) async {
+      final memo = List.filled(140, '메').join();
+      final tags = List.generate(10, (index) => '#태그${index + 1}');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SongResultCard(
+              song: Song(
+                artist: 'N.Flying',
+                title: 'Blue Moon',
+                tags: tags,
+                memo: memo,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text(memo), findsOneWidget);
+      expect(find.text(tags.join(' ')), findsOneWidget);
+      expect(find.textContaining('/140자'), findsNothing);
+      expect(find.textContaining('/10개'), findsNothing);
+    },
+  );
 
   testWidgets('set song cards replace delete with remove from set', (
     WidgetTester tester,
