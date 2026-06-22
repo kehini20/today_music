@@ -398,7 +398,7 @@ void main() {
     WidgetTester tester,
   ) async {
     const songsJson =
-        '[{"artist":"N.Flying","title":"Linked","tags":[],"link":"https://example.com"},'
+        '[{"artist":"N.Flying","title":"Linked","tags":[],"memo":"Japan 1st Full Album BROTHERHOOD","link":"https://example.com"},'
         '{"artist":"N.Flying","title":"Search","tags":[],"link":""}]';
     const setsJson =
         '[{"id":"set-1","name":"공연 세트","songs":['
@@ -440,30 +440,56 @@ void main() {
     final songCard = find.byKey(const ValueKey('song-action-card'));
     expect(songCard, findsOneWidget);
     expect(
-      find.descendant(of: songCard, matching: find.text('즐겨찾기 해제')),
+      find.descendant(
+        of: songCard,
+        matching: find.byKey(const ValueKey('song-card-artist')),
+      ),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: songCard, matching: find.text('포함된 세트 보기')),
+      find.descendant(
+        of: songCard,
+        matching: find.byKey(const ValueKey('song-card-title')),
+      ),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: songCard, matching: find.text('링크 열기')),
+      find.descendant(
+        of: songCard,
+        matching: find.text('Japan 1st Full Album BROTHERHOOD'),
+      ),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: songCard, matching: find.text('곡 수정')),
+      find.descendant(of: songCard, matching: find.byTooltip('즐겨찾기 해제')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: songCard, matching: find.text('곡 삭제')),
+      find.descendant(of: songCard, matching: find.text('세트')),
       findsOneWidget,
     );
-    expect(find.text('세트에서 제외'), findsNothing);
+    expect(
+      find.descendant(of: songCard, matching: find.text('링크')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('수정')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('삭제')),
+      findsOneWidget,
+    );
+    expect(find.text('제외'), findsNothing);
+    expect(
+      find.descendant(
+        of: songCard,
+        matching: find.byKey(const ValueKey('song-card-action-bar')),
+      ),
+      findsOneWidget,
+    );
 
-    await tester.tap(
-      find.descendant(of: songCard, matching: find.text('포함된 세트 보기')),
-    );
+    await tester.tap(find.byKey(const ValueKey('song-card-sets-action')));
     await tester.pumpAndSettle();
     expect(find.text('이 곡이 포함된 세트'), findsOneWidget);
     expect(find.text('공연 세트'), findsOneWidget);
@@ -476,9 +502,7 @@ void main() {
     await tester.tap(includedSetsClose);
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.descendant(of: songCard, matching: find.text('곡 수정')),
-    );
+    await tester.tap(find.byKey(const ValueKey('song-card-edit-action')));
     await tester.pumpAndSettle();
     expect(find.text('곡 수정하기'), findsOneWidget);
     final editDialog = find.byType(AlertDialog).last;
@@ -535,12 +559,22 @@ void main() {
 
     await tester.tap(find.text('N.Flying - Linked'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('song-action-card')), findsOneWidget);
-    expect(find.text('링크 열기'), findsOneWidget);
-    expect(find.text('곡 수정'), findsOneWidget);
-    expect(find.text('곡 삭제'), findsOneWidget);
+    final songCard = find.byKey(const ValueKey('song-action-card'));
+    expect(songCard, findsOneWidget);
+    expect(
+      find.descendant(of: songCard, matching: find.text('링크')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('수정')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('삭제')),
+      findsOneWidget,
+    );
 
-    await tester.tap(find.text('곡 삭제'));
+    await tester.tap(find.byKey(const ValueKey('song-card-delete-action')));
     await tester.pumpAndSettle();
     expect(find.text('이 곡을 삭제할까요?'), findsOneWidget);
     expect(find.textContaining('세트에서도 함께 사라집니다'), findsOneWidget);
@@ -548,6 +582,58 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(OutlinedButton, '닫기').last);
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('song card action bar stays usable on a small screen', (
+    WidgetTester tester,
+  ) async {
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {
+        'tdm_alpha_songs':
+            '[{"artist":"N.Flying","title":"A Very Long Song Title For A Small Screen","tags":["#concert"],"memo":"","link":""}]',
+        'sample_prompt_checked': true,
+      },
+    );
+    tester.view.physicalSize = const Size(360, 640);
+    await tester.pump();
+
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('N.Flying'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey(
+          'artist-song-card-n.flying\na very long song title for a small screen',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final cardRect = tester.getRect(
+      find.byKey(const ValueKey('song-action-card')),
+    );
+    expect(cardRect.width, lessThanOrEqualTo(320));
+    expect(cardRect.left, greaterThanOrEqualTo(20));
+    expect(cardRect.right, lessThanOrEqualTo(340));
+
+    final actionKeys = [
+      const ValueKey('song-card-link-action'),
+      const ValueKey('song-card-sets-action'),
+      const ValueKey('song-card-edit-action'),
+      const ValueKey('song-card-delete-action'),
+    ];
+    final actionRects = actionKeys
+        .map((key) => tester.getRect(find.byKey(key)))
+        .toList();
+    expect(actionRects.map((rect) => rect.top).toSet(), hasLength(1));
+    for (final rect in actionRects) {
+      expect(rect.height, greaterThanOrEqualTo(48));
+      expect(rect.width, greaterThan(60));
+    }
+    expect(find.text('검색'), findsOneWidget);
+    expect(find.text('#concert'), findsOneWidget);
   });
 
   testWidgets('set song cards replace delete with remove from set', (
@@ -581,15 +667,31 @@ void main() {
 
     await tester.tap(find.text('1. N.Flying - Linked'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('song-action-card')), findsOneWidget);
-    expect(find.text('즐겨찾기 추가'), findsOneWidget);
-    expect(find.text('포함된 세트 보기'), findsOneWidget);
-    expect(find.text('링크 열기'), findsOneWidget);
-    expect(find.text('곡 수정'), findsOneWidget);
-    expect(find.text('세트에서 제외'), findsOneWidget);
-    expect(find.text('곡 삭제'), findsNothing);
+    final songCard = find.byKey(const ValueKey('song-action-card'));
+    expect(songCard, findsOneWidget);
+    expect(
+      find.descendant(of: songCard, matching: find.byTooltip('즐겨찾기 추가')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('세트')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('링크')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('수정')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: songCard, matching: find.text('제외')),
+      findsOneWidget,
+    );
+    expect(find.text('삭제'), findsNothing);
 
-    await tester.tap(find.text('세트에서 제외'));
+    await tester.tap(find.byKey(const ValueKey('song-card-remove-action')));
     await tester.pumpAndSettle();
     expect(find.text('곡 제외'), findsOneWidget);
     expect(find.textContaining('원본 노래 저장소에서는 삭제되지 않아요'), findsOneWidget);

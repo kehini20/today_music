@@ -38,8 +38,8 @@ const Color tdmBorder = Color(0xFFB7E8E1);
 const Color tdmLinkBlue = Color(0xFF3A8FC3);
 const Color updateAvailableColor = Color(0xFF5B8DEF);
 const int maxSongSetCount = 30;
-const String appSemanticVersion = '0.7.5';
-const String appDisplayVersion = 'Alpha 0.7.5';
+const String appSemanticVersion = '0.7.6';
+const String appDisplayVersion = 'Alpha 0.7.6';
 const String songTxtImportGuidance =
     '곡 목록 TXT 파일을 선택하세요.\n앱 전체 백업 JSON 파일은 여기서 불러올 수 없습니다.';
 const String appBackupImportGuidance =
@@ -1279,98 +1279,241 @@ class _TodaySongPageState extends State<TodaySongPage> {
             final currentSong = _canonicalStoredSong(song);
             final isFavorite = _isSongFavorite(currentSong);
             final hasLink = _hasSongLink(currentSong);
+            final matchingSetCount = _songSetsContainingSong(
+              currentSong,
+            ).length;
+            final visibleTags = visibleSongTags(currentSong.tags);
+            final supportingText = currentSong.memo.trim().isNotEmpty
+                ? currentSong.memo.trim()
+                : visibleTags.isNotEmpty
+                ? visibleTags.take(3).join(' ')
+                : matchingSetCount > 0
+                ? '포함된 세트 $matchingSetCount개'
+                : null;
 
             void closeThen(VoidCallback action) {
               Navigator.of(cardContext).pop();
               _runAfterFrame(action);
             }
 
-            return AlertDialog(
-              key: const ValueKey('song-action-card'),
-              title: Text(
-                '${currentSong.artist} - ${currentSong.title}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  OutlinedButton.icon(
-                    key: const ValueKey('song-card-favorite'),
-                    onPressed: () {
-                      _toggleSongFavorite(
-                        currentSong,
-                        onChanged: () {
-                          refreshCard(() {});
-                          onSongChanged();
-                        },
-                      );
-                    },
-                    icon: Icon(isFavorite ? Icons.star : Icons.star_border),
-                    label: Text(isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _showSongIncludedSetsDialog(currentSong),
-                    icon: const Icon(Icons.folder_copy_outlined),
-                    label: const Text('포함된 세트 보기'),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _openSongLinkOrYoutube(currentSong),
-                    icon: Icon(hasLink ? Icons.link : Icons.search),
-                    label: Text(hasLink ? '링크 열기' : '링크 검색'),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      closeThen(() {
-                        _showEditSongDialog(
-                          currentSong,
-                          onSongUpdated: onSongUpdated ?? onSongChanged,
-                        );
-                      });
-                    },
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const Text('곡 수정'),
-                  ),
-                  const SizedBox(height: 8),
-                  if (removeFromSet != null)
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        closeThen(() {
-                          _showRemoveSingleSongFromSetDialog(
-                            removeFromSet,
-                            currentSong,
-                            onRemoved: onRemovedFromSet,
-                          );
-                        });
-                      },
-                      icon: const Icon(Icons.remove_circle_outline),
-                      label: const Text('세트에서 제외'),
-                    )
-                  else
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        closeThen(() {
-                          _showDeleteSongDialog(
-                            currentSong,
-                            onDeleted: onDeleted ?? onSongChanged,
-                          );
-                        });
-                      },
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('곡 삭제'),
+            Widget actionItem({
+              required Key key,
+              required IconData icon,
+              required String label,
+              required VoidCallback onTap,
+              Color? color,
+            }) {
+              return Expanded(
+                child: InkWell(
+                  key: key,
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: onTap,
+                  child: SizedBox(
+                    height: 52,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icon, size: 19, color: color ?? tdmTextMain),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: color ?? tdmTextMain,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(cardContext).pop(),
-                  child: const Text('닫기'),
+                  ),
                 ),
-              ],
+              );
+            }
+
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 24,
+              ),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              child: Container(
+                key: const ValueKey('song-action-card'),
+                width: min(MediaQuery.sizeOf(cardContext).width - 40, 520),
+                decoration: BoxDecoration(
+                  color: tdmCardBackground,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: tdmBorder),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x1A173A3A),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 14, 10, 0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                currentSong.artist,
+                                key: const ValueKey('song-card-artist'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: tdmTextSub,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              key: const ValueKey('song-card-favorite'),
+                              tooltip: isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가',
+                              onPressed: () {
+                                _toggleSongFavorite(
+                                  currentSong,
+                                  onChanged: () {
+                                    refreshCard(() {});
+                                    onSongChanged();
+                                  },
+                                );
+                              },
+                              icon: Icon(
+                                isFavorite ? Icons.star : Icons.star_border,
+                                color: isFavorite
+                                    ? const Color(0xFFF2B84B)
+                                    : tdmTextSub,
+                                size: 25,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                        child: Text(
+                          currentSong.title,
+                          key: const ValueKey('song-card-title'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: tdmTextMain,
+                            fontSize: 27,
+                            height: 1.15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      if (supportingText != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                          child: Text(
+                            supportingText,
+                            key: const ValueKey('song-card-supporting'),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: tdmTextSub,
+                              fontSize: 13,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 20),
+                      Container(
+                        key: const ValueKey('song-card-action-bar'),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFDFF8F3),
+                          border: Border(top: BorderSide(color: tdmBorder)),
+                        ),
+                        child: Row(
+                          children: [
+                            actionItem(
+                              key: const ValueKey('song-card-link-action'),
+                              icon: hasLink ? Icons.link : Icons.search,
+                              label: hasLink ? '링크' : '검색',
+                              onTap: () => _openSongLinkOrYoutube(currentSong),
+                              color: hasLink ? tdmLinkBlue : null,
+                            ),
+                            actionItem(
+                              key: const ValueKey('song-card-sets-action'),
+                              icon: Icons.folder_open_outlined,
+                              label: '세트',
+                              onTap: () =>
+                                  _showSongIncludedSetsDialog(currentSong),
+                            ),
+                            actionItem(
+                              key: const ValueKey('song-card-edit-action'),
+                              icon: Icons.edit_outlined,
+                              label: '수정',
+                              onTap: () {
+                                closeThen(() {
+                                  _showEditSongDialog(
+                                    currentSong,
+                                    onSongUpdated:
+                                        onSongUpdated ?? onSongChanged,
+                                  );
+                                });
+                              },
+                            ),
+                            if (removeFromSet != null)
+                              actionItem(
+                                key: const ValueKey('song-card-remove-action'),
+                                icon: Icons.remove_circle_outline,
+                                label: '제외',
+                                onTap: () {
+                                  closeThen(() {
+                                    _showRemoveSingleSongFromSetDialog(
+                                      removeFromSet,
+                                      currentSong,
+                                      onRemoved: onRemovedFromSet,
+                                    );
+                                  });
+                                },
+                              )
+                            else
+                              actionItem(
+                                key: const ValueKey('song-card-delete-action'),
+                                icon: Icons.delete_outline,
+                                label: '삭제',
+                                color: Colors.red.shade700,
+                                onTap: () {
+                                  closeThen(() {
+                                    _showDeleteSongDialog(
+                                      currentSong,
+                                      onDeleted: onDeleted ?? onSongChanged,
+                                    );
+                                  });
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.center,
+                        child: TextButton(
+                          onPressed: () => Navigator.of(cardContext).pop(),
+                          child: const Text('닫기'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             );
           },
         );

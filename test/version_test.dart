@@ -7,8 +7,8 @@ void main() {
   test('display version matches the pubspec release version', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
 
-    expect(pubspec, contains('version: 0.7.5+14'));
-    expect(appSemanticVersion, '0.7.5');
-    expect(appDisplayVersion, 'Alpha 0.7.5');
+    expect(pubspec, contains('version: 0.7.6+15'));
+    expect(appSemanticVersion, '0.7.6');
+    expect(appDisplayVersion, 'Alpha 0.7.6');
   });
 }
