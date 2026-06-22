@@ -1,4 +1,12 @@
+int _songIdSequence = 0;
+
+String createSongId() {
+  _songIdSequence++;
+  return 'song-${DateTime.now().microsecondsSinceEpoch}-$_songIdSequence';
+}
+
 class Song {
+  final String id;
   final String artist;
   final String title;
   final List<String> tags;
@@ -7,6 +15,7 @@ class Song {
   final bool isFavorite;
 
   const Song({
+    this.id = '',
     required this.artist,
     required this.title,
     required this.tags,
@@ -19,6 +28,7 @@ class Song {
     final rawTags = json['tags'];
 
     return Song(
+      id: (json['id'] as String?)?.trim() ?? '',
       artist: (json['artist'] as String?)?.trim() ?? '',
       title: (json['title'] as String?)?.trim() ?? '',
       tags: rawTags is List
@@ -32,6 +42,7 @@ class Song {
 
   Map<String, Object?> toJson() {
     return {
+      'id': id,
       'artist': artist,
       'title': title,
       'tags': tags,
@@ -42,6 +53,7 @@ class Song {
   }
 
   Song copyWith({
+    String? id,
     String? artist,
     String? title,
     List<String>? tags,
@@ -50,6 +62,7 @@ class Song {
     bool? isFavorite,
   }) {
     return Song(
+      id: id ?? this.id,
       artist: artist ?? this.artist,
       title: title ?? this.title,
       tags: tags ?? this.tags,
@@ -61,14 +74,39 @@ class Song {
 
   @override
   bool operator ==(Object other) {
-    return other is Song &&
-        artist.trim().toLowerCase() == other.artist.trim().toLowerCase() &&
+    if (other is! Song) {
+      return false;
+    }
+    if (id.isNotEmpty && other.id.isNotEmpty) {
+      return id == other.id;
+    }
+    return artist.trim().toLowerCase() == other.artist.trim().toLowerCase() &&
         title.trim().toLowerCase() == other.title.trim().toLowerCase();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(artist.trim().toLowerCase(), title.trim().toLowerCase());
+  int get hashCode => id.isNotEmpty
+      ? id.hashCode
+      : Object.hash(artist.trim().toLowerCase(), title.trim().toLowerCase());
+}
+
+List<Song> ensureSongIds(Iterable<Song> songs) {
+  final usedIds = <String>{};
+  return [
+    for (final song in songs)
+      if (song.id.isNotEmpty && usedIds.add(song.id))
+        song
+      else
+        song.copyWith(id: _nextUniqueSongId(usedIds)),
+  ];
+}
+
+String _nextUniqueSongId(Set<String> usedIds) {
+  var id = createSongId();
+  while (!usedIds.add(id)) {
+    id = createSongId();
+  }
+  return id;
 }
 
 Map<String, List<Song>> songsByArtist(List<Song> songs) {

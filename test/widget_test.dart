@@ -49,6 +49,27 @@ void main() {
     );
   });
 
+  test('legacy and duplicate song ids are assigned unique identities', () {
+    final migrated = ensureSongIds(const [
+      Song(artist: 'N.Flying', title: 'Star', tags: [], memo: 'first'),
+      Song(artist: 'N.Flying', title: 'Star', tags: [], memo: 'second'),
+      Song(id: 'existing-id', artist: 'N.Flying', title: 'Songbird', tags: []),
+      Song(
+        id: 'existing-id',
+        artist: 'N.Flying',
+        title: 'Songbird (Korean Ver.)',
+        tags: [],
+      ),
+    ]);
+
+    expect(migrated.map((song) => song.id).toSet(), hasLength(4));
+    expect(migrated[0].id, isNotEmpty);
+    expect(migrated[1].id, isNot(migrated[0].id));
+    expect(migrated[2].id, 'existing-id');
+    expect(migrated[3].id, isNot('existing-id'));
+    expect(migrated[2], isNot(migrated[3]));
+  });
+
   testWidgets('list cards clip mint hover feedback to their rounded shape', (
     WidgetTester tester,
   ) async {
@@ -479,12 +500,70 @@ void main() {
     },
   );
 
+  testWidgets('song sort dropdown uses the TDM pill styling', (
+    WidgetTester tester,
+  ) async {
+    await pumpTodayMusicApp(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('N.Flying'));
+    await tester.pumpAndSettle();
+
+    final dropdown = find.byKey(const ValueKey('artist-song-sort'));
+    expect(dropdown, findsOneWidget);
+    expect(
+      find.ancestor(
+        of: dropdown,
+        matching: find.byType(DropdownButtonHideUnderline),
+      ),
+      findsOneWidget,
+    );
+    final styledContainers = tester
+        .widgetList<Container>(
+          find.ancestor(of: dropdown, matching: find.byType(Container)),
+        )
+        .where(
+          (container) =>
+              container.constraints?.minWidth == 92 &&
+              container.constraints?.minHeight == 36,
+        );
+    expect(styledContainers, isNotEmpty);
+    final decoration = styledContainers.first.decoration! as BoxDecoration;
+    expect(decoration.color, tdmCardBackground);
+    expect(decoration.borderRadius, BorderRadius.circular(18));
+  });
+
+  testWidgets(
+    'individual song add exposes youtube search with title validation',
+    (WidgetTester tester) async {
+      await pumpTodayMusicApp(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('노래 저장소'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, '\uACE1 \uCD94\uAC00'),
+      );
+      await tester.pumpAndSettle();
+
+      final searchButton = find.byKey(
+        const ValueKey('add-song-youtube-search'),
+      );
+      expect(searchButton, findsOneWidget);
+      expect(find.byTooltip('유튜브 검색'), findsOneWidget);
+
+      await tester.tap(searchButton);
+      await tester.pump();
+      expect(find.text('곡명을 입력해 주세요.'), findsOneWidget);
+    },
+  );
+
   testWidgets('artist song rows open the common card only from the title', (
     WidgetTester tester,
   ) async {
     const songsJson =
-        '[{"artist":"N.Flying","title":"Linked","tags":["#verylongtagone","#verylongtagtwo","#verylongtagthree","#verylongtagfour","#verylongtagfive"],"memo":"Japan 1st Full Album BROTHERHOOD","link":"https://example.com"},'
-        '{"artist":"N.Flying","title":"Search","tags":[],"link":""}]';
+        '[{"id":"linked-song","artist":"N.Flying","title":"Linked","tags":["#verylongtagone","#verylongtagtwo","#verylongtagthree","#verylongtagfour","#verylongtagfive"],"memo":"Japan 1st Full Album BROTHERHOOD","link":"https://example.com"},'
+        '{"id":"search-song","artist":"N.Flying","title":"Search","tags":[],"link":""}]';
     const setsJson =
         '[{"id":"set-1","name":"공연 세트","songs":['
         '{"artist":"N.Flying","title":"Linked","tags":[],"link":"https://example.com"}'
@@ -518,7 +597,7 @@ void main() {
     expect(find.byKey(const ValueKey('song-action-card')), findsNothing);
 
     await tester.tap(
-      find.byKey(const ValueKey('artist-song-card-n.flying\nlinked')),
+      find.byKey(const ValueKey('artist-song-card-linked-song')),
     );
     await tester.pumpAndSettle();
 
@@ -643,12 +722,85 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('duplicate titles keep independent card edit and delete targets', (
+    WidgetTester tester,
+  ) async {
+    const songsJson =
+        '[{"id":"star-first","artist":"N.Flying","title":"Star","tags":["#first"],"memo":"first memo","link":""},'
+        '{"id":"star-second","artist":"N.Flying","title":"Star","tags":["#second"],"memo":"second memo","link":""},'
+        '{"id":"songbird","artist":"N.Flying","title":"Songbird","tags":[],"memo":"","link":""},'
+        '{"id":"songbird-korean","artist":"N.Flying","title":"Songbird (Korean Ver.)","tags":[],"memo":"","link":""}]';
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {
+        'tdm_alpha_songs': songsJson,
+        'sample_prompt_checked': true,
+      },
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('노래 저장소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('N.Flying'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('artist-song-card-star-first')));
+    await tester.pumpAndSettle();
+    expect(find.text('first memo'), findsOneWidget);
+    expect(find.text('second memo'), findsNothing);
+    await tester.tap(find.widgetWithText(TextButton, '\uB2EB\uAE30').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('artist-song-card-star-second')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('second memo'), findsOneWidget);
+    expect(find.text('first memo'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('song-card-edit-action')));
+    await tester.pumpAndSettle();
+    final editDialog = find.byType(AlertDialog).last;
+    final editFields = find.descendant(
+      of: editDialog,
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(editFields.at(2), 'updated second memo');
+    await tester.tap(find.byType(FilledButton).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FilledButton).last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('artist-song-card-star-second')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('updated second memo'), findsOneWidget);
+    expect(find.text('first memo'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('song-card-delete-action')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FilledButton).last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('artist-song-card-star-first')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('artist-song-card-star-second')),
+      findsNothing,
+    );
+    expect(find.text('Songbird'), findsOneWidget);
+    expect(find.text('Songbird (Korean Ver.)'), findsOneWidget);
+  });
+
   testWidgets('all songs keep batch controls separate from the common card', (
     WidgetTester tester,
   ) async {
     const songsJson =
-        '[{"artist":"N.Flying","title":"Linked","tags":[],"link":"https://example.com"},'
-        '{"artist":"N.Flying","title":"Search","tags":[],"link":""}]';
+        '[{"id":"linked-song","artist":"N.Flying","title":"Linked","tags":[],"link":"https://example.com"},'
+        '{"id":"search-song","artist":"N.Flying","title":"Search","tags":[],"link":""}]';
     await pumpTodayMusicApp(
       tester,
       initialValues: {
@@ -668,9 +820,7 @@ void main() {
     expect(find.byTooltip('관리'), findsNothing);
     expect(find.byIcon(Icons.folder_copy_outlined), findsNothing);
 
-    final linkedRow = find.byKey(
-      const ValueKey('all-songs-n.flying\nlinked-0'),
-    );
+    final linkedRow = find.byKey(const ValueKey('all-songs-linked-song-0'));
     await tester.tap(
       find.descendant(of: linkedRow, matching: find.byType(Checkbox)),
     );
@@ -711,7 +861,7 @@ void main() {
       tester,
       initialValues: {
         'tdm_alpha_songs':
-            '[{"artist":"N.Flying","title":"A Very Long Song Title For A Small Screen","tags":["#concert"],"memo":"","link":""}]',
+            '[{"id":"small-screen-song","artist":"N.Flying","title":"A Very Long Song Title For A Small Screen","tags":["#concert"],"memo":"","link":""}]',
         'sample_prompt_checked': true,
       },
     );
@@ -723,11 +873,7 @@ void main() {
     await tester.tap(find.text('N.Flying'));
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(
-        const ValueKey(
-          'artist-song-card-n.flying\na very long song title for a small screen',
-        ),
-      ),
+      find.byKey(const ValueKey('artist-song-card-small-screen-song')),
     );
     await tester.pumpAndSettle();
 
@@ -858,17 +1004,17 @@ void main() {
   ) async {
     const storedSet =
         '[{"id":"set-1","name":"공연 세트","songs":['
-        '{"artist":"N.Flying","title":"Zulu","tags":[]},'
-        '{"artist":"N.Flying","title":"Alpha","tags":[]},'
-        '{"artist":"N.Flying","title":"Moon","tags":[]}'
+        '{"id":"zulu","artist":"N.Flying","title":"Zulu","tags":[]},'
+        '{"id":"alpha","artist":"N.Flying","title":"Alpha","tags":[]},'
+        '{"id":"moon","artist":"N.Flying","title":"Moon","tags":[]}'
         ']}]';
     await pumpTodayMusicApp(
       tester,
       initialValues: {
         'tdm_alpha_songs':
-            '[{"artist":"N.Flying","title":"Zulu","tags":[]},'
-            '{"artist":"N.Flying","title":"Alpha","tags":[]},'
-            '{"artist":"N.Flying","title":"Moon","tags":[]}]',
+            '[{"id":"zulu","artist":"N.Flying","title":"Zulu","tags":[]},'
+            '{"id":"alpha","artist":"N.Flying","title":"Alpha","tags":[]},'
+            '{"id":"moon","artist":"N.Flying","title":"Moon","tags":[]}]',
         'tdm_song_sets': storedSet,
         'sample_prompt_checked': true,
       },

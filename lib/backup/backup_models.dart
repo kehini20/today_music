@@ -86,6 +86,7 @@ class BackupSong {
 
   Song toSong() {
     return Song(
+      id: id,
       artist: artist,
       title: title,
       tags: List<String>.of(tags),

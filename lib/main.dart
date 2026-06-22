@@ -614,8 +614,14 @@ class _TodaySongPageState extends State<TodaySongPage> {
       return;
     }
 
+    final loadedSongs = ensureSongIds(savedSongs ?? const []);
+    final migratedSongIds =
+        savedSongs != null &&
+        (savedSongs.any((song) => song.id.isEmpty) ||
+            savedSongs.map((song) => song.id).toSet().length !=
+                savedSongs.length);
+
     setState(() {
-      final loadedSongs = savedSongs ?? [];
       final existingArtists = songsByArtist(loadedSongs).keys.toSet();
       _songs = loadedSongs;
       _songSets = _songSetsSyncedWithSongs(savedSongSets, loadedSongs);
@@ -645,6 +651,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _includeTodayTag = true;
       _shareTextController.clear();
     });
+
+    if (migratedSongIds) {
+      await Future.wait([
+        SongStorage.saveSongs(_songs),
+        SongStorage.saveSongSets(_songSets),
+      ]);
+    }
 
     if ((savedSongs == null || savedSongs.isEmpty) && !samplePromptChecked) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -685,15 +698,24 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   List<SongSet> _songSetsSyncedWithSongs(List<SongSet> sets, List<Song> songs) {
-    final currentSongsByKey = {
-      for (final song in songs) _songDuplicateKey(song): song,
+    final currentSongsById = {
+      for (final song in songs)
+        if (song.id.isNotEmpty) song.id: song,
     };
+    final currentSongsByKey = <String, Song>{};
+    for (final song in songs) {
+      currentSongsByKey.putIfAbsent(_songDuplicateKey(song), () => song);
+    }
 
     return sets
         .map(
           (set) => set.copyWith(
             songs: set.songs
-                .map((song) => currentSongsByKey[_songDuplicateKey(song)])
+                .map(
+                  (song) => song.id.isNotEmpty
+                      ? currentSongsById[song.id]
+                      : currentSongsByKey[_songDuplicateKey(song)],
+                )
                 .whereType<Song>()
                 .toList(),
           ),
@@ -732,16 +754,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   void _replaceSongInSets(Song originalSong, Song updatedSong) {
-    final originalKey = _songDuplicateKey(originalSong);
-
     _songSets = _songSets
         .map(
           (set) => set.copyWith(
             songs: set.songs
                 .map(
-                  (song) => _songDuplicateKey(song) == originalKey
-                      ? updatedSong
-                      : song,
+                  (song) =>
+                      _sameStoredSong(song, originalSong) ? updatedSong : song,
                 )
                 .toList(),
           ),
@@ -750,12 +769,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   void _toggleSongFavorite(Song song, {VoidCallback? onChanged}) {
-    final songKey = _songDuplicateKey(song);
     Song? updatedSong;
 
     setState(() {
       final index = _songs.indexWhere(
-        (storedSong) => _songDuplicateKey(storedSong) == songKey,
+        (storedSong) => _sameStoredSong(storedSong, song),
       );
       if (index == -1) {
         return;
@@ -847,7 +865,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       }
 
                       setState(() {
-                        _songs = List<Song>.of(sampleSongs);
+                        _songs = ensureSongIds(sampleSongs);
                         _syncArtistFilterState();
                       });
                       _saveSongs();
@@ -908,7 +926,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   Song _canonicalStoredSong(Song song) {
     for (final storedSong in _songs) {
-      if (_isSameSongResult(storedSong, song)) {
+      if (_sameStoredSong(storedSong, song)) {
         return storedSong;
       }
     }
@@ -1996,10 +2014,20 @@ class _TodaySongPageState extends State<TodaySongPage> {
         '${song.title.trim().toLowerCase()}';
   }
 
+  String _songWidgetKey(Song song) {
+    return song.id.isNotEmpty ? song.id : _songDuplicateKey(song);
+  }
+
+  bool _sameStoredSong(Song first, Song second) {
+    if (first.id.isNotEmpty && second.id.isNotEmpty) {
+      return first.id == second.id;
+    }
+    return _songDuplicateKey(first) == _songDuplicateKey(second);
+  }
+
   Song? _storedSongMatching(Song song) {
-    final key = _songDuplicateKey(song);
     for (final storedSong in _songs) {
-      if (_songDuplicateKey(storedSong) == key) {
+      if (_sameStoredSong(storedSong, song)) {
         return storedSong;
       }
     }
@@ -2019,7 +2047,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   bool _isSameSongResult(Song first, Song second) {
-    return _songDuplicateKey(first) == _songDuplicateKey(second);
+    return _sameStoredSong(first, second);
   }
 
   Widget _favoriteSongIconButton(Song song, {VoidCallback? onChanged}) {
@@ -2191,8 +2219,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   void _addSong(Song song) {
+    final storedSong = song.id.isEmpty
+        ? song.copyWith(id: createSongId())
+        : song;
     setState(() {
-      _songs.add(song);
+      _songs.add(storedSong);
       _syncArtistFilterState();
     });
     _saveSongs();
@@ -2208,13 +2239,18 @@ class _TodaySongPageState extends State<TodaySongPage> {
     var didUpdate = false;
 
     setState(() {
-      final index = _songs.indexWhere((song) => identical(song, originalSong));
+      final index = _songs.indexWhere(
+        (song) => _sameStoredSong(song, originalSong),
+      );
 
       if (index == -1) {
         return;
       }
 
-      updatedSong = updatedSong.copyWith(isFavorite: _songs[index].isFavorite);
+      updatedSong = updatedSong.copyWith(
+        id: _songs[index].id,
+        isFavorite: _songs[index].isFavorite,
+      );
       _songs[index] = updatedSong;
       didUpdate = true;
       _replaceSongInSets(originalSong, updatedSong);
@@ -2286,10 +2322,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
   void _deleteSong(Song song) {
     setState(() {
-      _songs.remove(song);
+      _songs.removeWhere((storedSong) => _sameStoredSong(storedSong, song));
       _syncArtistFilterState();
       _syncSongSetsWithSongs();
-      if (_selectedSong == song) {
+      if (_selectedSong != null && _sameStoredSong(_selectedSong!, song)) {
         _selectedSong = null;
         _shareTextController.clear();
         _includeSongLink = true;
@@ -3156,12 +3192,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
   }
 
   List<SongSet> _songSetsContainingSong(Song song) {
-    final songKey = _songDuplicateKey(song);
     return _songSets
         .where(
-          (songSet) => songSet.songs.any(
-            (setSong) => _songDuplicateKey(setSong) == songKey,
-          ),
+          (songSet) =>
+              songSet.songs.any((setSong) => _sameStoredSong(setSong, song)),
         )
         .toList();
   }
@@ -3497,6 +3531,22 @@ class _TodaySongPageState extends State<TodaySongPage> {
               onSongsAdded?.call();
               FocusManager.instance.primaryFocus?.unfocus();
               Navigator.of(dialogContext).pop();
+            }
+
+            Future<void> searchIndividualSong() async {
+              final title = titleController.text.trim();
+              if (title.isEmpty) {
+                refreshDialog(() {
+                  titleErrorText = '곡명을 입력해 주세요.';
+                });
+                return;
+              }
+              if (artistName.trim().isEmpty) {
+                _showRootSnackBar('가수명을 입력하면 더 정확하게 검색할 수 있어요.');
+              }
+              await _openYoutubeSearch(
+                Song(artist: artistName.trim(), title: title, tags: const []),
+              );
             }
 
             void hideKeyboardAndRevealAnalyzeButton() {
@@ -3866,9 +3916,17 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                   TextField(
                                     controller: linkController,
                                     keyboardType: TextInputType.url,
-                                    decoration: const InputDecoration(
+                                    decoration: InputDecoration(
                                       labelText: '\uB9C1\uD06C',
-                                      border: OutlineInputBorder(),
+                                      border: const OutlineInputBorder(),
+                                      suffixIcon: IconButton(
+                                        key: const ValueKey(
+                                          'add-song-youtube-search',
+                                        ),
+                                        tooltip: '유튜브 검색',
+                                        onPressed: searchIndividualSong,
+                                        icon: const Icon(Icons.search),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 12),
@@ -4536,7 +4594,11 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
         if (candidate.status == PasteSongCandidateStatus.newSong) {
           if (findMatchingSong(incoming, _songs) == null) {
-            _songs.add(incoming);
+            _songs.add(
+              incoming.id.isEmpty
+                  ? incoming.copyWith(id: createSongId())
+                  : incoming,
+            );
             addedCount++;
           }
           continue;
@@ -4551,7 +4613,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
           continue;
         }
         final index = _songs.indexWhere(
-          (song) => identical(song, matchingSong),
+          (song) => _sameStoredSong(song, matchingSong),
         );
         if (index == -1) {
           continue;
@@ -4561,7 +4623,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
         final updatedSong = mergeImportedSong(
           originalSong,
           incoming,
-        ).copyWith(isFavorite: originalSong.isFavorite);
+        ).copyWith(id: originalSong.id, isFavorite: originalSong.isFavorite);
         if (updatedSong.link == originalSong.link &&
             updatedSong.memo == originalSong.memo &&
             listEquals(updatedSong.tags, originalSong.tags)) {
@@ -4662,6 +4724,42 @@ class _TodaySongPageState extends State<TodaySongPage> {
           ),
         );
       },
+    );
+  }
+
+  Widget _songListSortDropdown({
+    required Key key,
+    required SongListSortMode value,
+    required ValueChanged<SongListSortMode?> onChanged,
+  }) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 92, minHeight: 36),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: tdmCardBackground,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: tdmBorder),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<SongListSortMode>(
+          key: key,
+          value: value,
+          isDense: true,
+          icon: const Icon(Icons.arrow_drop_down, color: tdmPrimaryDark),
+          borderRadius: BorderRadius.circular(12),
+          dropdownColor: Colors.white,
+          style: const TextStyle(
+            color: tdmTextMain,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+          items: const [
+            DropdownMenuItem(value: SongListSortMode.added, child: Text('등록')),
+            DropdownMenuItem(value: SongListSortMode.title, child: Text('이름')),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 
@@ -4807,20 +4905,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                           Flexible(
                             child: Align(
                               alignment: Alignment.centerRight,
-                              child: DropdownButton<SongListSortMode>(
+                              child: _songListSortDropdown(
                                 key: const ValueKey('artist-song-sort'),
                                 value: songSortMode,
-                                isDense: true,
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: SongListSortMode.added,
-                                    child: Text('등록'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: SongListSortMode.title,
-                                    child: Text('이름'),
-                                  ),
-                                ],
                                 onChanged: (mode) {
                                   if (mode == null) {
                                     return;
@@ -4894,7 +4981,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                       Expanded(
                                         child: InkWell(
                                           key: ValueKey(
-                                            'artist-song-card-${_songDuplicateKey(song)}',
+                                            'artist-song-card-${_songWidgetKey(song)}',
                                           ),
                                           hoverColor: tdmHoverColor,
                                           splashColor: tdmHoverColor,
@@ -5124,20 +5211,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                             ),
                           ),
                           const Spacer(),
-                          DropdownButton<SongListSortMode>(
+                          _songListSortDropdown(
                             key: const ValueKey('all-song-sort'),
                             value: songSortMode,
-                            isDense: true,
-                            items: const [
-                              DropdownMenuItem(
-                                value: SongListSortMode.added,
-                                child: Text('등록'),
-                              ),
-                              DropdownMenuItem(
-                                value: SongListSortMode.title,
-                                child: Text('이름'),
-                              ),
-                            ],
                             onChanged: (mode) {
                               if (mode == null) {
                                 return;
@@ -5189,7 +5265,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
 
                                 return Padding(
                                   key: ValueKey(
-                                    'all-songs-${_songDuplicateKey(song)}-$index',
+                                    'all-songs-${_songWidgetKey(song)}-$index',
                                   ),
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 2,
@@ -5229,7 +5305,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                       Expanded(
                                         child: InkWell(
                                           key: ValueKey(
-                                            'all-song-card-${_songDuplicateKey(song)}',
+                                            'all-song-card-${_songWidgetKey(song)}',
                                           ),
                                           hoverColor: tdmHoverColor,
                                           splashColor: tdmHoverColor,
@@ -6155,7 +6231,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                     Expanded(
                                       child: InkWell(
                                         key: ValueKey(
-                                          'set-song-card-${_songDuplicateKey(song)}',
+                                          'set-song-card-${_songWidgetKey(song)}',
                                         ),
                                         hoverColor: tdmHoverColor,
                                         splashColor: tdmHoverColor,
@@ -6321,7 +6397,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
         return StatefulBuilder(
           builder: (context, refreshDialog) {
             final currentSet = _songSetById(songSet.id) ?? songSet;
-            final currentKeys = currentSet.songs.map(_songDuplicateKey).toSet();
+            final currentIds = currentSet.songs
+                .map((song) => song.id)
+                .where((id) => id.isNotEmpty)
+                .toSet();
             final songs = _allSongsForOverview();
             final visibleSongs = songs
                 .where(
@@ -6387,14 +6466,12 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 const Divider(height: 8),
                             itemBuilder: (context, index) {
                               final song = visibleSongs[index];
-                              final alreadyInSet = currentKeys.contains(
-                                _songDuplicateKey(song),
-                              );
+                              final alreadyInSet = currentIds.contains(song.id);
                               final checked = selectedSongs.contains(song);
 
                               return CheckboxListTile(
                                 key: ValueKey(
-                                  'add-set-${_songDuplicateKey(song)}-$index',
+                                  'add-set-${_songWidgetKey(song)}-$index',
                                 ),
                                 dense: true,
                                 value: alreadyInSet ? false : checked,
@@ -6494,7 +6571,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
             ),
             FilledButton(
               onPressed: () {
-                final removeKey = _songDuplicateKey(song);
                 setState(() {
                   _songSets = _songSets
                       .map(
@@ -6503,8 +6579,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 songs: set.songs
                                     .where(
                                       (setSong) =>
-                                          _songDuplicateKey(setSong) !=
-                                          removeKey,
+                                          !_sameStoredSong(setSong, song),
                                     )
                                     .toList(),
                               )
@@ -7577,6 +7652,7 @@ class _AddSongDialogState extends State<AddSongDialog> {
     final tags = normalizeTagInput(_tagsController.text);
 
     final song = Song(
+      id: widget.initialSong?.id ?? '',
       artist: artist,
       title: title,
       tags: tags,
@@ -7597,7 +7673,11 @@ class _AddSongDialogState extends State<AddSongDialog> {
     final normalizedTitle = title.trim().toLowerCase();
 
     return widget.existingSongs.any((existingSong) {
-      if (identical(existingSong, widget.initialSong)) {
+      final initialSong = widget.initialSong;
+      if (identical(existingSong, initialSong) ||
+          (initialSong != null &&
+              initialSong.id.isNotEmpty &&
+              existingSong.id == initialSong.id)) {
         return false;
       }
 
@@ -7643,6 +7723,7 @@ class _AddSongDialogState extends State<AddSongDialog> {
   Song _currentDraftSong() {
     final initialSong = widget.initialSong;
     return Song(
+      id: initialSong?.id ?? '',
       artist: _artistName.trim().isNotEmpty
           ? _artistName.trim()
           : initialSong?.artist ?? '',
@@ -7722,7 +7803,7 @@ class _AddSongDialogState extends State<AddSongDialog> {
                 decoration: InputDecoration(
                   labelText: '링크',
                   border: const OutlineInputBorder(),
-                  suffixIcon: _isEditMode && widget.onOpenLinkOrSearch != null
+                  suffixIcon: widget.onOpenLinkOrSearch != null
                       ? IconButton(
                           tooltip: _linkController.text.trim().isNotEmpty
                               ? '링크 열기'

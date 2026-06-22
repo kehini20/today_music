@@ -16,19 +16,21 @@ class BackupSerializer {
     String platform = 'android',
   }) {
     final backupSongs = <BackupSong>[];
-    final songIdsByKey = <String, String>{};
+    final backedUpSongIds = <String>{};
+    final songIdsByObject = Map<Song, String>.identity();
+    final songIdsByLegacyKey = <String, List<String>>{};
 
     for (var index = 0; index < source.songs.length; index++) {
       final song = source.songs[index];
-      final id = 'song-${(index + 1).toString().padLeft(6, '0')}';
-      final key = _songKey(song);
-      if (songIdsByKey.containsKey(key)) {
-        throw FormatException(
-          'Cannot back up duplicate song: ${song.artist} - ${song.title}.',
-        );
+      final id = song.id.trim().isEmpty
+          ? 'song-${(index + 1).toString().padLeft(6, '0')}'
+          : song.id;
+      if (!backedUpSongIds.add(id)) {
+        throw FormatException('Cannot back up duplicate song id: $id.');
       }
-      songIdsByKey[key] = id;
       backupSongs.add(BackupSong.fromSong(id: id, song: song, order: index));
+      songIdsByObject[song] = id;
+      songIdsByLegacyKey.putIfAbsent(_legacySongKey(song), () => []).add(id);
     }
 
     final backupSets = <BackupSongSet>[];
@@ -36,7 +38,12 @@ class BackupSerializer {
       final sourceSet = source.sets[index];
       final songIds = <String>[];
       for (final song in sourceSet.songs) {
-        final songId = songIdsByKey[_songKey(song)];
+        final legacyMatches = songIdsByLegacyKey[_legacySongKey(song)];
+        final songId =
+            (song.id.isNotEmpty && backedUpSongIds.contains(song.id)
+                ? song.id
+                : songIdsByObject[song]) ??
+            (legacyMatches?.length == 1 ? legacyMatches!.single : null);
         if (songId == null) {
           throw FormatException(
             'Set ${sourceSet.name} references a song outside the song storage: '
@@ -144,7 +151,7 @@ class BackupSerializer {
     );
   }
 
-  String _songKey(Song song) {
+  String _legacySongKey(Song song) {
     return '${song.artist.trim().toLowerCase()}\u0000'
         '${song.title.trim().toLowerCase()}';
   }

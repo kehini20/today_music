@@ -125,6 +125,51 @@ void main() {
       expect(serializer.restore(document).songs, isEmpty);
     });
 
+    test('preserves duplicate artist and title entries by song id', () {
+      const first = Song(
+        id: 'star-first',
+        artist: 'N.Flying',
+        title: 'Star',
+        tags: [],
+        memo: 'first memo',
+      );
+      const second = Song(
+        id: 'star-second',
+        artist: 'N.Flying',
+        title: 'Star',
+        tags: [],
+        memo: 'second memo',
+      );
+      final document = serializer.createDocument(
+        source: source(
+          songs: const [first, second],
+          sets: const [
+            BackupSourceSet(
+              id: 'set-duplicates',
+              name: 'Duplicates',
+              songs: [second],
+            ),
+          ],
+        ),
+        appVersion: '0.7.6',
+        createdAt: DateTime.parse('2026-06-22T18:00:00+09:00'),
+      );
+
+      final restored = serializer.restore(
+        serializer.decode(serializer.encode(document)),
+      );
+
+      expect(restored.songs.map((song) => song.id), [
+        'star-first',
+        'star-second',
+      ]);
+      expect(restored.songs.map((song) => song.memo), [
+        'first memo',
+        'second memo',
+      ]);
+      expect(restored.sets.single.songs.single.id, 'star-second');
+    });
+
     test('keeps the same v1 schema for a web file backup', () {
       final document = serializer.createDocument(
         source: source(),
