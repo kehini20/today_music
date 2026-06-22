@@ -49,6 +49,56 @@ void main() {
     );
   });
 
+  testWidgets('list cards clip mint hover feedback to their rounded shape', (
+    WidgetTester tester,
+  ) async {
+    const song = Song(artist: 'N.Flying', title: 'Blue Moon', tags: []);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              ArtistSongGroupTile(
+                artist: song.artist,
+                songs: const [song],
+                isRandomEnabled: true,
+                onRandomToggle: (_) {},
+                onTap: () {},
+              ),
+              SongSetTile(
+                songSet: const SongSet(
+                  id: 'set-1',
+                  name: 'Live Set',
+                  songs: [song],
+                ),
+                isSelectedForRandom: true,
+                onRandomToggle: (_) {},
+                onTap: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    for (final tileType in [ArtistSongGroupTile, SongSetTile]) {
+      final tile = find.byType(tileType);
+      final material = tester.widget<Material>(
+        find.descendant(of: tile, matching: find.byType(Material)).first,
+      );
+      final inkWell = tester.widget<InkWell>(
+        find.descendant(of: tile, matching: find.byType(InkWell)).first,
+      );
+
+      expect(material.clipBehavior, Clip.antiAlias);
+      expect(inkWell.hoverColor, tdmHoverColor);
+      expect(inkWell.splashColor, tdmHoverColor);
+      expect(inkWell.highlightColor, Colors.transparent);
+      expect(inkWell.borderRadius, BorderRadius.circular(8));
+    }
+  });
+
   testWidgets('Today music prototype renders', (WidgetTester tester) async {
     await pumpTodayMusicApp(tester);
 

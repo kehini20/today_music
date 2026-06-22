@@ -27,6 +27,7 @@ void main() {
 
 const Color tdmPrimary = Color(0xFF12CDB3);
 const Color tdmPrimaryDark = Color(0xFF0FAF9A);
+const Color tdmHoverColor = Color(0x1412CDB3);
 const Color tdmSky = Color(0xFF87D3FF);
 const Color tdmLime = Color(0xFFEBF195);
 const Color tdmLimeText = Color(0xFFC9D94F);
@@ -1340,6 +1341,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                 child: InkWell(
                   key: key,
                   borderRadius: BorderRadius.circular(10),
+                  hoverColor: tdmHoverColor,
+                  splashColor: tdmHoverColor,
+                  highlightColor: Colors.transparent,
                   onTap: onTap,
                   child: SizedBox(
                     height: 52,
@@ -4892,6 +4896,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                           key: ValueKey(
                                             'artist-song-card-${_songDuplicateKey(song)}',
                                           ),
+                                          hoverColor: tdmHoverColor,
+                                          splashColor: tdmHoverColor,
+                                          highlightColor: Colors.transparent,
                                           onTap: () => _showSongActionCard(
                                             song,
                                             onSongChanged: () {
@@ -5224,6 +5231,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                           key: ValueKey(
                                             'all-song-card-${_songDuplicateKey(song)}',
                                           ),
+                                          hoverColor: tdmHoverColor,
+                                          splashColor: tdmHoverColor,
+                                          highlightColor: Colors.transparent,
                                           onTap: () => _showSongActionCard(
                                             song,
                                             onSongChanged: () {
@@ -6147,6 +6157,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                         key: ValueKey(
                                           'set-song-card-${_songDuplicateKey(song)}',
                                         ),
+                                        hoverColor: tdmHoverColor,
+                                        splashColor: tdmHoverColor,
+                                        highlightColor: Colors.transparent,
                                         onTap: () => _showSongActionCard(
                                           song,
                                           sourceSetName: songSet.name,
@@ -6981,8 +6994,12 @@ class SongSetTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           side: BorderSide(color: isSelectedForRandom ? tdmPrimary : tdmBorder),
         ),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
+          hoverColor: tdmHoverColor,
+          splashColor: tdmHoverColor,
+          highlightColor: Colors.transparent,
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -7087,91 +7104,99 @@ class ArtistSongGroupTile extends StatelessWidget {
     final enabledTextColor = isRandomEnabled
         ? colorScheme.onSurface
         : colorScheme.onSurfaceVariant;
+    final cardColor = randomControlDisabled
+        ? Colors.grey.shade100
+        : isRandomEnabled
+        ? colorScheme.surfaceContainerHigh
+        : Colors.grey.shade100;
+    final borderColor = randomControlDisabled
+        ? Colors.grey.shade300
+        : colorScheme.outlineVariant;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: randomControlDisabled
-              ? Colors.grey.shade100
-              : isRandomEnabled
-              ? colorScheme.surfaceContainerHigh
-              : Colors.grey.shade100,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: cardColor,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: randomControlDisabled
-                ? Colors.grey.shade300
-                : colorScheme.outlineVariant,
-          ),
+          side: BorderSide(color: borderColor),
         ),
-        child: Row(
-          children: [
-            Checkbox(
-              value: isRandomEnabled,
-              onChanged: onRandomToggle == null
-                  ? null
-                  : (value) => onRandomToggle!(value ?? false),
-              checkColor: randomControlDisabled
-                  ? Colors.grey.shade500
-                  : Colors.white,
-              fillColor: WidgetStateProperty.resolveWith((states) {
-                if (randomControlDisabled) {
-                  return isRandomEnabled
-                      ? Colors.grey.shade300
-                      : Colors.grey.shade100;
-                }
-                if (states.contains(WidgetState.selected)) {
-                  return tdmPrimary;
-                }
-                return null;
-              }),
-              side: BorderSide(
-                color: randomControlDisabled
-                    ? Colors.grey.shade400
-                    : colorScheme.outline,
-              ),
-              visualDensity: VisualDensity.compact,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    artist,
-                    style: TextStyle(
-                      color: randomControlDisabled
-                          ? disabledTextColor
-                          : enabledTextColor,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                    ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          hoverColor: tdmHoverColor,
+          splashColor: tdmHoverColor,
+          highlightColor: Colors.transparent,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: isRandomEnabled,
+                  onChanged: onRandomToggle == null
+                      ? null
+                      : (value) => onRandomToggle!(value ?? false),
+                  checkColor: randomControlDisabled
+                      ? Colors.grey.shade500
+                      : Colors.white,
+                  fillColor: WidgetStateProperty.resolveWith((states) {
+                    if (randomControlDisabled) {
+                      return isRandomEnabled
+                          ? Colors.grey.shade300
+                          : Colors.grey.shade100;
+                    }
+                    if (states.contains(WidgetState.selected)) {
+                      return tdmPrimary;
+                    }
+                    return null;
+                  }),
+                  side: BorderSide(
+                    color: randomControlDisabled
+                        ? Colors.grey.shade400
+                        : colorScheme.outline,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${songs.length}곡',
-                    style: TextStyle(
-                      color: randomControlDisabled
-                          ? Colors.grey.shade500
-                          : colorScheme.onSurfaceVariant,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        artist,
+                        style: TextStyle(
+                          color: randomControlDisabled
+                              ? disabledTextColor
+                              : enabledTextColor,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${songs.length}곡',
+                        style: TextStyle(
+                          color: randomControlDisabled
+                              ? Colors.grey.shade500
+                              : colorScheme.onSurfaceVariant,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  color: randomControlDisabled
+                      ? Colors.grey.shade400
+                      : colorScheme.onSurfaceVariant,
+                  size: 22,
+                ),
+              ],
             ),
-            Icon(
-              Icons.chevron_right,
-              color: randomControlDisabled
-                  ? Colors.grey.shade400
-                  : colorScheme.onSurfaceVariant,
-              size: 22,
-            ),
-          ],
+          ),
         ),
       ),
     );
