@@ -41,8 +41,8 @@ const Color updateAvailableColor = Color(0xFF5B8DEF);
 const int maxSongSetCount = 30;
 const int maxSongMemoLength = 140;
 const int maxSongTagCount = 10;
-const String appSemanticVersion = '0.7.6';
-const String appDisplayVersion = 'Alpha 0.7.6';
+const String appSemanticVersion = '0.7.7';
+const String appDisplayVersion = 'Alpha 0.7.7';
 const String songTxtImportGuidance =
     '곡 목록 TXT 파일을 선택하세요.\n앱 전체 백업 JSON 파일은 여기서 불러올 수 없습니다.';
 const String appBackupImportGuidance =
@@ -4108,6 +4108,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final drafts = analysis.drafts.toList();
     final excludedIndexes = <int>{};
     final selectedUpdateIndexes = <int>{};
+    var showIdenticalCandidates = false;
 
     showDialog<void>(
       context: context,
@@ -4138,6 +4139,20 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       PasteSongCandidateStatus.updateAvailable,
                 )
                 .length;
+            final updateAvailableIndexes = candidates
+                .asMap()
+                .entries
+                .where(
+                  (entry) =>
+                      entry.value.status ==
+                      PasteSongCandidateStatus.updateAvailable,
+                )
+                .map((entry) => entry.key)
+                .toSet();
+            selectedUpdateIndexes.removeWhere(
+              (index) => !updateAvailableIndexes.contains(index),
+            );
+            final selectedUpdateCount = selectedUpdateIndexes.length;
             final needsReviewCount = candidates
                 .where(
                   (candidate) =>
@@ -4276,6 +4291,138 @@ class _TodaySongPageState extends State<TodaySongPage> {
               });
             }
 
+            Future<bool> confirmSelectedUpdates() async {
+              if (selectedUpdateCount == 0) {
+                return true;
+              }
+              final shouldContinue = await showDialog<bool>(
+                context: analysisContext,
+                builder: (confirmContext) {
+                  return AlertDialog(
+                    title: const Text('곡 정보 갱신'),
+                    content: Text(
+                      '선택한 $selectedUpdateCount곡의 정보를 갱신합니다.\n\n'
+                      '새 데이터의 빈 값은 기존 값을 유지합니다.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.of(confirmContext).pop(false),
+                        child: const Text('취소'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(confirmContext).pop(true),
+                        child: const Text('갱신'),
+                      ),
+                    ],
+                  );
+                },
+              );
+              return shouldContinue == true;
+            }
+
+            Future<void> showUpdateDetails(PasteSongCandidate candidate) async {
+              final song = candidate.song;
+              final existingSong = candidate.existingSong;
+              final mergedSong = candidate.mergedSong;
+              if (song == null || existingSong == null || mergedSong == null) {
+                return;
+              }
+
+              String displayValue(String value) {
+                final trimmed = value.trim();
+                return trimmed.isEmpty ? '-' : trimmed;
+              }
+
+              Widget comparisonSection({
+                required String label,
+                required String before,
+                required String after,
+                required bool changed,
+              }) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          color: tdmTextMain,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '기존: ${displayValue(before)}',
+                        style: const TextStyle(color: tdmTextSub, fontSize: 13),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        changed ? '갱신: ${displayValue(after)}' : '갱신: 기존 유지',
+                        style: TextStyle(
+                          color: changed ? updateAvailableColor : tdmTextSub,
+                          fontSize: 13,
+                          fontWeight: changed
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final changedFields = candidate.changes
+                  .map((change) => change.field)
+                  .toSet();
+              await showDialog<void>(
+                context: analysisContext,
+                builder: (detailContext) {
+                  return AlertDialog(
+                    key: const ValueKey('import-update-detail-card'),
+                    title: Text('${song.artist} - ${song.title}'),
+                    content: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 460),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            comparisonSection(
+                              label: '메모',
+                              before: existingSong.memo,
+                              after: mergedSong.memo,
+                              changed: changedFields.contains('메모'),
+                            ),
+                            comparisonSection(
+                              label: '태그',
+                              before: existingSong.tags.join(' '),
+                              after: mergedSong.tags.join(' '),
+                              changed: changedFields.contains('태그'),
+                            ),
+                            comparisonSection(
+                              label: '링크',
+                              before: existingSong.link,
+                              after: mergedSong.link,
+                              changed: changedFields.contains('링크'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(detailContext).pop(),
+                        child: const Text('닫기'),
+                      ),
+                    ],
+                  );
+                },
+              );
+            }
+
             final dialogMedia = MediaQuery.of(analysisContext);
             final maxDialogHeight = max(
               320.0,
@@ -4312,8 +4459,6 @@ class _TodaySongPageState extends State<TodaySongPage> {
                     const SizedBox(height: 8),
                     Text(
                       '\uC0C8 \uACE1 $newSongCount\uACE1 \u00B7 '
-                      '업데이트 가능 $updateAvailableCount곡 · '
-                      '동일함 $existingCount곡 · '
                       '\uD655\uC778 \uD544\uC694 $needsReviewCount\uACE1',
                       style: const TextStyle(
                         color: tdmTextSub,
@@ -4322,6 +4467,61 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       ),
                     ),
                     const SizedBox(height: 4),
+                    if (updateAvailableCount > 0) ...[
+                      InkWell(
+                        key: const ValueKey('update-selection-controls'),
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () {
+                          refreshDialog(() {
+                            if (selectedUpdateCount == updateAvailableCount) {
+                              selectedUpdateIndexes.clear();
+                            } else {
+                              selectedUpdateIndexes
+                                ..clear()
+                                ..addAll(updateAvailableIndexes);
+                            }
+                          });
+                        },
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Checkbox(
+                              key: const ValueKey('select-all-updates'),
+                              tristate: true,
+                              value: selectedUpdateCount == 0
+                                  ? false
+                                  : selectedUpdateCount == updateAvailableCount
+                                  ? true
+                                  : null,
+                              onChanged: (_) {
+                                refreshDialog(() {
+                                  if (selectedUpdateCount ==
+                                      updateAvailableCount) {
+                                    selectedUpdateIndexes.clear();
+                                  } else {
+                                    selectedUpdateIndexes
+                                      ..clear()
+                                      ..addAll(updateAvailableIndexes);
+                                  }
+                                });
+                              },
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            Text(
+                              '갱신 가능 '
+                              '$selectedUpdateCount/$updateAvailableCount',
+                              key: const ValueKey('update-selection-count'),
+                              style: const TextStyle(
+                                color: tdmTextMain,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
                     if (needsReviewCount > 0) ...[
                       const Text(
                         '확인이 필요한 곡이 있어요.',
@@ -4350,91 +4550,224 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                 textAlign: TextAlign.center,
                               ),
                             )
-                          : ListView.separated(
-                              itemCount: candidates.length,
-                              separatorBuilder: (context, index) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (context, index) {
-                                final candidate = candidates[index];
-                                final song = candidate.song;
-                                final canInclude =
-                                    candidate.status ==
-                                        PasteSongCandidateStatus.newSong ||
-                                    candidate.status ==
-                                        PasteSongCandidateStatus
-                                            .updateAvailable;
-                                final isIncluded = switch (candidate.status) {
-                                  PasteSongCandidateStatus.newSong =>
-                                    !excludedIndexes.contains(index),
-                                  PasteSongCandidateStatus.updateAvailable =>
-                                    selectedUpdateIndexes.contains(index),
-                                  _ => false,
-                                };
-                                final colorScheme = Theme.of(
-                                  context,
-                                ).colorScheme;
+                          : Builder(
+                              builder: (context) {
+                                final primaryEntries = candidates
+                                    .asMap()
+                                    .entries
+                                    .where(
+                                      (entry) =>
+                                          entry.value.status !=
+                                          PasteSongCandidateStatus.existing,
+                                    )
+                                    .toList();
+                                int priority(PasteSongCandidate candidate) {
+                                  return switch (candidate.status) {
+                                    PasteSongCandidateStatus.newSong => 0,
+                                    PasteSongCandidateStatus.updateAvailable =>
+                                      1,
+                                    PasteSongCandidateStatus.needsReview => 2,
+                                    PasteSongCandidateStatus.existing => 3,
+                                  };
+                                }
 
-                                return ListTile(
-                                  key: ValueKey(
-                                    'paste-result-${candidate.sourceLine}-$index-${song?.artist ?? ''}-${song?.title ?? ''}-${candidate.status.name}',
-                                  ),
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: Checkbox(
-                                    value: isIncluded,
-                                    onChanged: canInclude
-                                        ? (value) {
-                                            refreshDialog(() {
-                                              if (value ?? false) {
-                                                if (candidate.status ==
-                                                    PasteSongCandidateStatus
-                                                        .newSong) {
-                                                  excludedIndexes.remove(index);
-                                                } else {
-                                                  selectedUpdateIndexes.add(
-                                                    index,
-                                                  );
-                                                }
-                                              } else {
-                                                if (candidate.status ==
-                                                    PasteSongCandidateStatus
-                                                        .newSong) {
-                                                  excludedIndexes.add(index);
-                                                } else {
-                                                  selectedUpdateIndexes.remove(
-                                                    index,
-                                                  );
-                                                }
-                                              }
-                                            });
-                                          }
-                                        : null,
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                  title: InkWell(
-                                    onTap: () =>
-                                        editCandidateTitle(index, candidate),
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 4,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              song == null
-                                                  ? candidate.sourceLine
-                                                  : '${song.artist} - ${song.title}',
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
+                                primaryEntries.sort(
+                                  (left, right) => priority(
+                                    left.value,
+                                  ).compareTo(priority(right.value)),
+                                );
+                                final identicalEntries = candidates
+                                    .asMap()
+                                    .entries
+                                    .where(
+                                      (entry) =>
+                                          entry.value.status ==
+                                          PasteSongCandidateStatus.existing,
+                                    )
+                                    .toList();
+                                final visibleEntries = [
+                                  ...primaryEntries,
+                                  if (showIdenticalCandidates)
+                                    ...identicalEntries,
+                                ];
+
+                                return ListView.separated(
+                                  itemCount:
+                                      visibleEntries.length +
+                                      (identicalEntries.isEmpty ? 0 : 1),
+                                  separatorBuilder: (context, index) =>
+                                      const Divider(height: 1),
+                                  itemBuilder: (context, index) {
+                                    if (index == primaryEntries.length &&
+                                        identicalEntries.isNotEmpty) {
+                                      return ListTile(
+                                        key: const ValueKey(
+                                          'identical-candidates-toggle',
+                                        ),
+                                        dense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        title: Text(
+                                          '동일함 ${identicalEntries.length}곡',
+                                          style: const TextStyle(
+                                            color: tdmTextSub,
+                                            fontWeight: FontWeight.w700,
                                           ),
-                                          const SizedBox(width: 4),
-                                          Tooltip(
-                                            message:
+                                        ),
+                                        trailing: TextButton(
+                                          onPressed: () {
+                                            refreshDialog(() {
+                                              showIdenticalCandidates =
+                                                  !showIdenticalCandidates;
+                                            });
+                                          },
+                                          child: Text(
+                                            showIdenticalCandidates
+                                                ? '접기'
+                                                : '열기',
+                                          ),
+                                        ),
+                                        onTap: () {
+                                          refreshDialog(() {
+                                            showIdenticalCandidates =
+                                                !showIdenticalCandidates;
+                                          });
+                                        },
+                                      );
+                                    }
+
+                                    final adjustedIndex =
+                                        identicalEntries.isNotEmpty &&
+                                            index > primaryEntries.length
+                                        ? index - 1
+                                        : index;
+                                    final entry = visibleEntries[adjustedIndex];
+                                    final candidateIndex = entry.key;
+                                    final candidate = entry.value;
+                                    final song = candidate.song;
+                                    final canInclude =
+                                        candidate.status ==
+                                            PasteSongCandidateStatus.newSong ||
+                                        candidate.status ==
+                                            PasteSongCandidateStatus
+                                                .updateAvailable;
+                                    final isIncluded =
+                                        switch (candidate.status) {
+                                          PasteSongCandidateStatus.newSong =>
+                                            !excludedIndexes.contains(
+                                              candidateIndex,
+                                            ),
+                                          PasteSongCandidateStatus
+                                              .updateAvailable =>
+                                            selectedUpdateIndexes.contains(
+                                              candidateIndex,
+                                            ),
+                                          _ => false,
+                                        };
+                                    final colorScheme = Theme.of(
+                                      context,
+                                    ).colorScheme;
+
+                                    return ListTile(
+                                      key: ValueKey(
+                                        'paste-result-${candidate.sourceLine}-$candidateIndex-${song?.artist ?? ''}-${song?.title ?? ''}-${candidate.status.name}',
+                                      ),
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      onTap:
+                                          candidate.status ==
+                                              PasteSongCandidateStatus
+                                                  .updateAvailable
+                                          ? () => showUpdateDetails(candidate)
+                                          : () => editCandidateTitle(
+                                              candidateIndex,
+                                              candidate,
+                                            ),
+                                      leading: Checkbox(
+                                        value: isIncluded,
+                                        onChanged: canInclude
+                                            ? (value) {
+                                                refreshDialog(() {
+                                                  if (value ?? false) {
+                                                    if (candidate.status ==
+                                                        PasteSongCandidateStatus
+                                                            .newSong) {
+                                                      excludedIndexes.remove(
+                                                        candidateIndex,
+                                                      );
+                                                    } else {
+                                                      selectedUpdateIndexes.add(
+                                                        candidateIndex,
+                                                      );
+                                                    }
+                                                  } else {
+                                                    if (candidate.status ==
+                                                        PasteSongCandidateStatus
+                                                            .newSong) {
+                                                      excludedIndexes.add(
+                                                        candidateIndex,
+                                                      );
+                                                    } else {
+                                                      selectedUpdateIndexes
+                                                          .remove(
+                                                            candidateIndex,
+                                                          );
+                                                    }
+                                                  }
+                                                });
+                                              }
+                                            : null,
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                      title: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 4,
+                                        ),
+                                        child: Text(
+                                          song == null
+                                              ? candidate.sourceLine
+                                              : '${song.artist} - ${song.title}',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      subtitle:
+                                          candidate.status ==
+                                              PasteSongCandidateStatus
+                                                  .updateAvailable
+                                          ? Text(
+                                              '갱신 가능 정보 : '
+                                              '${candidate.changes.map((change) => change.field).join(', ')}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                color: tdmTextSub,
+                                                fontSize: 11,
+                                              ),
+                                            )
+                                          : candidate.changes.isEmpty
+                                          ? candidate.status ==
+                                                    PasteSongCandidateStatus
+                                                        .existing
+                                                ? const Text(
+                                                    '변경 없음',
+                                                    style: TextStyle(
+                                                      color: tdmTextSub,
+                                                      fontSize: 11,
+                                                    ),
+                                                  )
+                                                : null
+                                          : null,
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            tooltip:
                                                 '\uACE1\uBA85 \uC218\uC815',
-                                            child: Icon(
+                                            onPressed: () => editCandidateTitle(
+                                              candidateIndex,
+                                              candidate,
+                                            ),
+                                            icon: Icon(
                                               Icons.edit_outlined,
                                               size: 16,
                                               color: Theme.of(
@@ -4442,52 +4775,21 @@ class _TodaySongPageState extends State<TodaySongPage> {
                                               ).colorScheme.onSurfaceVariant,
                                             ),
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  subtitle: candidate.changes.isEmpty
-                                      ? candidate.status ==
-                                                PasteSongCandidateStatus
-                                                    .existing
-                                            ? const Text(
-                                                '변경 없음',
-                                                style: TextStyle(
-                                                  color: tdmTextSub,
-                                                  fontSize: 11,
-                                                ),
-                                              )
-                                            : null
-                                      : Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 2,
-                                          ),
-                                          child: Text(
-                                            candidate.changes
-                                                .map(
-                                                  (change) =>
-                                                      change.description,
-                                                )
-                                                .join('\n'),
-                                            maxLines: 4,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: tdmTextSub,
-                                              fontSize: 11,
+                                          Text(
+                                            candidate.statusLabel,
+                                            style: TextStyle(
+                                              color: _pasteStatusColor(
+                                                candidate.status,
+                                                colorScheme,
+                                              ),
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w800,
                                             ),
                                           ),
-                                        ),
-                                  trailing: Text(
-                                    candidate.statusLabel,
-                                    style: TextStyle(
-                                      color: _pasteStatusColor(
-                                        candidate.status,
-                                        colorScheme,
+                                        ],
                                       ),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
+                                    );
+                                  },
                                 );
                               },
                             ),
@@ -4498,7 +4800,13 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       child: FilledButton(
                         onPressed: selectedCandidateCount == 0
                             ? null
-                            : () {
+                            : () async {
+                                if (!await confirmSelectedUpdates()) {
+                                  return;
+                                }
+                                if (!analysisContext.mounted) {
+                                  return;
+                                }
                                 final selectedCandidates = candidates
                                     .asMap()
                                     .entries

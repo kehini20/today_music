@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1175,15 +1177,37 @@ void main() {
     await tester.tap(find.text('분석하기'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('업데이트 가능 1곡'), findsOneWidget);
-    expect(find.text('업데이트 가능'), findsOneWidget);
-    expect(find.textContaining('링크: 비어 있음'), findsOneWidget);
+    expect(find.text('새 곡 0곡 · 확인 필요 0곡'), findsOneWidget);
+    expect(find.text('갱신 가능 0/1'), findsOneWidget);
+    expect(find.text('갱신 가능 정보 : 링크, 태그'), findsOneWidget);
+    expect(find.textContaining('업데이트 가능'), findsNothing);
 
-    final checkbox = tester.widget<Checkbox>(find.byType(Checkbox).last);
-    expect(checkbox.value, isFalse);
-    await tester.tap(find.byType(Checkbox).last);
+    await tester.tap(find.text('N.Flying - Flowerwork'));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('import-update-detail-card')),
+      findsOneWidget,
+    );
+    expect(find.text('기존: 기존 메모'), findsOneWidget);
+    expect(find.text('갱신: 기존 유지'), findsOneWidget);
+    expect(find.text('갱신: #엔플라잉 #승협'), findsOneWidget);
+    expect(find.text('갱신: https://example.com/flowerwork'), findsOneWidget);
+    final updatedLink = tester.widget<Text>(
+      find.text('갱신: https://example.com/flowerwork'),
+    );
+    expect(updatedLink.style?.color, updateAvailableColor);
+    expect(find.widgetWithText(FilledButton, '저장'), findsNothing);
+    await tester.tap(find.widgetWithText(TextButton, '닫기'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('select-all-updates')));
+    await tester.pumpAndSettle();
+    expect(find.text('갱신 가능 1/1'), findsOneWidget);
     await tester.tap(find.text('선택한 항목 저장'));
+    await tester.pumpAndSettle();
+    expect(find.text('곡 정보 갱신'), findsOneWidget);
+    expect(find.textContaining('새 데이터의 빈 값은 기존 값을 유지합니다.'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '갱신'));
     await tester.pumpAndSettle();
 
     final preferences = await SharedPreferences.getInstance();
@@ -1193,4 +1217,145 @@ void main() {
     expect(stored, contains('"tags":["#엔플라잉","#승협"]'));
     expect(stored, contains('"isFavorite":true'));
   });
+
+  testWidgets(
+    'bulk update controls select and clear fifty update candidates only',
+    (WidgetTester tester) async {
+      final storedSongs = [
+        for (var index = 0; index < 50; index++)
+          {
+            'id': 'bulk-$index',
+            'artist': 'Bulk Artist',
+            'title': 'Song $index',
+            'tags': <String>[],
+            'memo': 'existing memo $index',
+            'link': '',
+            'isFavorite': false,
+          },
+        {
+          'id': 'identical-song',
+          'artist': 'Bulk Artist',
+          'title': 'Identical',
+          'tags': <String>['#same'],
+          'memo': 'same memo',
+          'link': '',
+          'isFavorite': false,
+        },
+      ];
+      final importText = StringBuffer();
+      for (var index = 0; index < 50; index++) {
+        importText
+          ..writeln('[곡]')
+          ..writeln('가수명: Bulk Artist')
+          ..writeln('제목: Song $index')
+          ..writeln('메모:')
+          ..writeln('태그: #updated$index')
+          ..writeln('링크: https://example.com/$index');
+      }
+      importText
+        ..writeln('[곡]')
+        ..writeln('가수명: Bulk Artist')
+        ..writeln('제목: Identical')
+        ..writeln('메모: same memo')
+        ..writeln('태그: #same')
+        ..writeln('링크:');
+
+      await pumpTodayMusicApp(
+        tester,
+        initialValues: {
+          'tdm_alpha_songs': jsonEncode(storedSongs),
+          'sample_prompt_checked': true,
+        },
+      );
+
+      await tester.tap(find.text('노래 저장소'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('곡 추가'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('붙여넣기'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('paste-song-input')),
+        importText.toString(),
+      );
+      await tester.tap(find.text('분석하기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('새 곡 0곡 · 확인 필요 0곡'), findsOneWidget);
+      expect(find.text('갱신 가능 0/50'), findsOneWidget);
+      expect(find.text('Bulk Artist - Identical'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('select-all-updates')));
+      await tester.pumpAndSettle();
+      expect(find.text('갱신 가능 50/50'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('select-all-updates')));
+      await tester.pumpAndSettle();
+      expect(find.text('갱신 가능 0/50'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('identical-candidates-toggle')),
+        300,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('동일함 1곡'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('identical-candidates-toggle')),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Bulk Artist - Identical'),
+        120,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('Bulk Artist - Identical'), findsOneWidget);
+      expect(find.text('접기'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('identical-candidates-toggle')),
+        -120,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('identical-candidates-toggle')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Bulk Artist - Identical'), findsNothing);
+      expect(find.text('열기'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Bulk Artist - Song 0'),
+        -300,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.pumpAndSettle();
+      final firstCandidateRow = find.ancestor(
+        of: find.text('Bulk Artist - Song 0'),
+        matching: find.byType(ListTile),
+      );
+      final firstCandidateCheckbox = find.descendant(
+        of: firstCandidateRow,
+        matching: find.byType(Checkbox),
+      );
+      await tester.tap(firstCandidateCheckbox);
+      await tester.pumpAndSettle();
+      expect(find.text('갱신 가능 1/50'), findsOneWidget);
+      final partialSelection = tester.widget<Checkbox>(
+        find.byKey(const ValueKey('select-all-updates')),
+      );
+      expect(partialSelection.value, isNull);
+
+      final selectAllButton = find.byKey(const ValueKey('select-all-updates'));
+      await tester.ensureVisible(selectAllButton);
+      await tester.tap(selectAllButton);
+      await tester.pumpAndSettle();
+      expect(find.text('갱신 가능 50/50'), findsOneWidget);
+      final saveButton = find.text('선택한 항목 저장');
+      await tester.ensureVisible(saveButton);
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('선택한 50곡의 정보를 갱신합니다.'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, '취소'));
+      await tester.pumpAndSettle();
+      expect(find.text('갱신 가능 50/50'), findsOneWidget);
+    },
+  );
 }

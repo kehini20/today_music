@@ -33,7 +33,7 @@ class PasteSongCandidate {
       case PasteSongCandidateStatus.newSong:
         return '\uC0C8 \uACE1';
       case PasteSongCandidateStatus.updateAvailable:
-        return '업데이트 가능';
+        return '갱신 가능';
       case PasteSongCandidateStatus.existing:
         return '동일함';
       case PasteSongCandidateStatus.needsReview:
