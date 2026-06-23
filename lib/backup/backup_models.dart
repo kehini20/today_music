@@ -172,22 +172,30 @@ class BackupShareSettings {
 class BackupAppSettings {
   final String randomMode;
   final List<String> artistOrder;
+  final bool offerNotificationsEnabled;
 
   const BackupAppSettings({
     required this.randomMode,
     this.artistOrder = const [],
+    this.offerNotificationsEnabled = true,
   });
 
   factory BackupAppSettings.fromJson(Map<String, Object?> json) {
     return BackupAppSettings(
       randomMode: _optionalString(json, 'randomMode', fallback: 'artistRandom'),
       artistOrder: _optionalStringList(json, 'artistOrder'),
+      offerNotificationsEnabled: _optionalBool(
+        json,
+        'offerNotificationsEnabled',
+        fallback: true,
+      ),
     );
   }
 
   Map<String, Object?> toJson() => {
     'randomMode': randomMode,
     'artistOrder': artistOrder,
+    'offerNotificationsEnabled': offerNotificationsEnabled,
   };
 }
 
@@ -314,6 +322,7 @@ class BackupSourceSnapshot {
   final String defaultShareMessage;
   final String randomMode;
   final List<String> artistOrder;
+  final bool offerNotificationsEnabled;
 
   const BackupSourceSnapshot({
     required this.songs,
@@ -323,6 +332,7 @@ class BackupSourceSnapshot {
     required this.defaultShareMessage,
     required this.randomMode,
     this.artistOrder = const [],
+    this.offerNotificationsEnabled = true,
   });
 }
 
@@ -346,6 +356,7 @@ class BackupRestoreSnapshot {
   final String defaultShareMessage;
   final String randomMode;
   final List<String> artistOrder;
+  final bool offerNotificationsEnabled;
 
   const BackupRestoreSnapshot({
     required this.songs,
@@ -355,6 +366,7 @@ class BackupRestoreSnapshot {
     required this.defaultShareMessage,
     required this.randomMode,
     this.artistOrder = const [],
+    this.offerNotificationsEnabled = true,
   });
 }
 
@@ -400,10 +412,14 @@ int _optionalInt(Map<String, Object?> json, String key, int fallback) {
   return value;
 }
 
-bool _optionalBool(Map<String, Object?> json, String key) {
+bool _optionalBool(
+  Map<String, Object?> json,
+  String key, {
+  bool fallback = false,
+}) {
   final value = json[key];
   if (value == null) {
-    return false;
+    return fallback;
   }
   if (value is! bool) {
     throw FormatException('$key must be a boolean.');

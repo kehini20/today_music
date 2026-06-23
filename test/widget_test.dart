@@ -6,12 +6,37 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:today_music/main.dart';
+import 'package:today_music/offers/offer_repository.dart';
 import 'package:today_music/song.dart';
+
+class FakeOfferRepository implements OfferRepository {
+  final List<OfferedDataPackage> offers;
+  final String text;
+  final Object? dataError;
+  int catalogLoadCount = 0;
+
+  FakeOfferRepository({required this.offers, this.text = '', this.dataError});
+
+  @override
+  Future<List<OfferedDataPackage>> loadCatalog() async {
+    catalogLoadCount++;
+    return offers;
+  }
+
+  @override
+  Future<String> loadData(OfferedDataPackage offer) async {
+    if (dataError != null) {
+      throw dataError!;
+    }
+    return text;
+  }
+}
 
 void main() {
   Future<void> pumpTodayMusicApp(
     WidgetTester tester, {
     Map<String, Object>? initialValues,
+    OfferRepository offerRepository = const HttpOfferRepository(),
   }) async {
     SharedPreferences.setMockInitialValues(
       initialValues ??
@@ -28,8 +53,23 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
 
-    await tester.pumpWidget(const TodayMusicApp());
+    await tester.pumpWidget(TodayMusicApp(offerRepository: offerRepository));
   }
+
+  final activeTestOffer = OfferedDataPackage(
+    id: 'limited_test_n_flying_202606',
+    enabled: true,
+    notify: true,
+    title: '기간 한정 테스트 데이터',
+    artistLabel: 'N.Flying',
+    description: '앱 사용 흐름을 확인할 수 있도록\nN.Flying 곡 데이터를 테스트용으로 제공합니다.',
+    note: '불러온 데이터는 직접 수정 또는 삭제할 수 있습니다.',
+    dataPath: '/data/offers/limited_test_n_flying_202606.txt',
+    startAt: DateTime.parse('2026-06-01T00:00:00+09:00'),
+    endAt: DateTime.parse('2026-10-31T23:59:59+09:00'),
+    primaryButton: '테스트 데이터 불러오기',
+    secondaryButton: '직접 시작',
+  );
 
   test('platform image recognition policy is explicit', () {
     expect(
@@ -197,6 +237,10 @@ void main() {
     expect(find.text('앱 백업 불러오기'), findsOneWidget);
     expect(find.text('앱 초기화'), findsOneWidget);
     expect(find.textContaining('곡, 세트, 좋아요, 공유 문구'), findsOneWidget);
+    expect(
+      find.textContaining('현재 데이터는 모두 삭제되고, 백업 데이터로 대체됩니다.'),
+      findsOneWidget,
+    );
 
     final exportTop = tester.getTopLeft(find.text('앱 백업 내보내기')).dy;
     final importTop = tester.getTopLeft(find.text('앱 백업 불러오기')).dy;
@@ -210,10 +254,153 @@ void main() {
     expect(find.textContaining('초기화 전 앱 백업을 내보내는 것을 권장합니다.'), findsOneWidget);
   });
 
+  testWidgets('empty first launch shows the active offered data prompt once', (
+    WidgetTester tester,
+  ) async {
+    final repository = FakeOfferRepository(offers: [activeTestOffer]);
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {},
+      offerRepository: repository,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('offered-data-prompt')), findsOneWidget);
+    expect(find.text('기간 한정 테스트 데이터를 불러올까요?'), findsOneWidget);
+    expect(
+      find.text(
+        '앱 사용 흐름을 확인할 수 있도록\n'
+        'N.Flying 곡 데이터를 테스트용으로 제공합니다.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('불러온 데이터는 직접 수정 또는 삭제할 수 있습니다.'), findsOneWidget);
+
+    await tester.tap(find.text('직접 시작'));
+    await tester.pumpAndSettle();
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getStringList('tdm_seen_offer_ids'),
+      contains(activeTestOffer.id),
+    );
+
+    await tester.pumpWidget(TodayMusicApp(offerRepository: repository));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('offered-data-prompt')), findsNothing);
+  });
+
+  testWidgets('do not show again disables offered data notifications', (
+    WidgetTester tester,
+  ) async {
+    final repository = FakeOfferRepository(offers: [activeTestOffer]);
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {},
+      offerRepository: repository,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('offer-do-not-show-again')));
+    await tester.tap(find.text('직접 시작'));
+    await tester.pumpAndSettle();
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getBool('tdm_offer_notifications_enabled'), isFalse);
+  });
+
+  testWidgets('offered TXT uses the normal import analysis and saves songs', (
+    WidgetTester tester,
+  ) async {
+    final repository = FakeOfferRepository(
+      offers: [activeTestOffer],
+      text: '''
+[곡]
+가수명: N.Flying
+제목: Blue Moon
+메모: 테스트 메모
+태그: #엔플라잉
+링크: https://example.com/blue-moon
+''',
+    );
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {},
+      offerRepository: repository,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('테스트 데이터 불러오기'));
+    await tester.pumpAndSettle();
+    expect(find.text('기간 한정 테스트 데이터'), findsOneWidget);
+    expect(find.text('N.Flying - Blue Moon'), findsOneWidget);
+    await tester.tap(find.text('선택한 항목 저장'));
+    await tester.pumpAndSettle();
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getString('tdm_alpha_songs'),
+      contains('"title":"Blue Moon"'),
+    );
+    expect(
+      preferences.getStringList('tdm_imported_offer_ids'),
+      contains(activeTestOffer.id),
+    );
+  });
+
+  testWidgets('existing songs suppress automatic offered data prompts', (
+    WidgetTester tester,
+  ) async {
+    final repository = FakeOfferRepository(offers: [activeTestOffer]);
+    await pumpTodayMusicApp(tester, offerRepository: repository);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('offered-data-prompt')), findsNothing);
+    expect(repository.catalogLoadCount, 0);
+  });
+
+  testWidgets('settings can re-enable offered data notifications', (
+    WidgetTester tester,
+  ) async {
+    await pumpTodayMusicApp(
+      tester,
+      initialValues: {
+        'tdm_alpha_songs':
+            '[{"artist":"N.Flying","title":"Blue Moon","tags":[],"memo":"","link":"","isFavorite":false}]',
+        'sample_prompt_checked': true,
+        'tdm_offer_notifications_enabled': false,
+      },
+    );
+
+    await tester.tap(find.text('설정'));
+    await tester.pumpAndSettle();
+    final setting = find.byKey(const ValueKey('offer-notifications-setting'));
+    expect(setting, findsOneWidget);
+    expect(tester.widget<SwitchListTile>(setting).value, isFalse);
+    await tester.tap(setting);
+    await tester.tap(find.widgetWithText(FilledButton, '저장'));
+    await tester.pumpAndSettle();
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getBool('tdm_offer_notifications_enabled'), isTrue);
+  });
+
   test('update candidate uses a distinct blue status color', () {
     expect(updateAvailableColor, const Color(0xFF5B8DEF));
     expect(updateAvailableColor, isNot(tdmPrimary));
     expect(updateAvailableColor, isNot(tdmTextSub));
+  });
+
+  test('app backup restore warning clearly states data replacement', () {
+    expect(
+      appBackupRestoreDescription,
+      '백업 파일로 앱 데이터를 복원합니다.\n'
+      '현재 데이터는 모두 삭제되고, 백업 데이터로 대체됩니다.',
+    );
+    expect(
+      appBackupRestoreWarning,
+      '복원하면 현재 데이터는 모두 삭제되고,\n'
+      '선택한 백업 파일의 데이터로 대체됩니다.',
+    );
   });
 
   test('app backup filename includes local date and time', () {
@@ -295,6 +482,9 @@ void main() {
       'tdm_disabled_random_artists': <String>['KEY'],
       'tdm_last_add_song_tab': 'paste',
       'tdm_artist_order': <String>['KEY'],
+      'tdm_offer_notifications_enabled': false,
+      'tdm_seen_offer_ids': <String>['limited_test_n_flying_202606'],
+      'tdm_imported_offer_ids': <String>['limited_test_n_flying_202606'],
     });
 
     await SongStorage.resetAllAppData();

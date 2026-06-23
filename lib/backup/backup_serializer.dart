@@ -88,6 +88,7 @@ class BackupSerializer {
         appSettings: BackupAppSettings(
           randomMode: source.randomMode,
           artistOrder: List<String>.of(source.artistOrder),
+          offerNotificationsEnabled: source.offerNotificationsEnabled,
         ),
       ),
     );
@@ -148,6 +149,8 @@ class BackupSerializer {
       defaultShareMessage: document.data.shareSettings.defaultMessage,
       randomMode: document.data.appSettings.randomMode,
       artistOrder: List<String>.of(document.data.appSettings.artistOrder),
+      offerNotificationsEnabled:
+          document.data.appSettings.offerNotificationsEnabled,
     );
   }
 

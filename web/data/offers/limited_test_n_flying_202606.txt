@@ -1,0 +1,839 @@
+# 오늘의 한 곡 내보내기
+# 이 파일은 오늘의 한 곡 앱에서 다시 불러올 수 있도록 만든 곡 세트 파일입니다.
+# 곡은 [곡] 단위로 구분됩니다.
+# 가수명과 곡명은 필수입니다.
+# 메모와 태그는 비워둘 수 있습니다.
+# 태그는 공백으로 구분해주세요.
+
+[곡]
+가수명: N.Flying
+제목: Flashback
+메모: 1st Album | Man on the Moon
+태그: #엔플라잉
+링크: https://youtu.be/b3xubrV7nnk?si=iJEEBndvqwEiohMZ
+
+[곡]
+가수명: N.Flying
+제목: 환절기 (換節期)
+메모: Digital Single | 환절기 (換節期)
+태그: #엔플라잉
+링크: https://youtu.be/99arhk9wdNE?si=9qVEgMFTzRAe63pj
+
+[곡]
+가수명: N.Flying
+제목: 옥탑방 (Rooftop)
+메모: Digital Single Fly High Project | #2 옥탑방 2019 역주행 1위곡
+태그: #엔플라잉
+링크: https://youtu.be/VpaUh_BGqE0?si=AiYd6eY1RAxdMSke
+
+[곡]
+가수명: N.Flying
+제목: Blue Moon
+메모: Digital Single | Once in a BLUE MOON
+태그: #엔플라잉
+링크: https://youtu.be/_8SnRN0114k?si=pjBde2hubSAh1KO7
+
+[곡]
+가수명: N.Flying
+제목: Love You Like That
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/lr4E4ZBG_Ng?si=eGPebS07acsudYft
+
+[곡]
+가수명: N.Flying
+제목: Songbird (Korean Ver.)
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/uhxw4beTM3U?si=tXLwwMXp_6A1_fVc
+
+[곡]
+가수명: N.Flying
+제목: 만년설 (Everlasting)
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/2L_W8hPpdhg?si=CQnsx5ZtH8M0J3QL
+
+[곡]
+가수명: N.Flying
+제목: 너 없는 난
+메모: 4th Mini Album | HOW ARE YOU?
+태그: #엔플라잉
+링크: https://youtu.be/OK-QYQPHe4Y?si=l-o_oO-pNi6Der70
+
+[곡]
+가수명: N.Flying
+제목: Shooting Star
+메모: 8th Mini Album | Dearest
+태그: #엔플라잉
+링크: https://youtu.be/6LRwpiqMK-0?si=CDTI5HAtMZpfYTcQ
+
+[곡]
+가수명: N.Flying
+제목: Preview
+메모: 5th Mini Album | 봄이 부시게
+태그: #엔플라잉
+링크: https://youtu.be/ziC1xBmmn58?si=tFSNsJZkwEys58G0
+
+[곡]
+가수명: N.Flying
+제목: 네가 내 마음에 자리 잡았다 (Into You)
+메모: Digital Single | 네가 내 마음에 자리 잡았다
+태그: #엔플라잉
+링크: https://youtu.be/Y6WPPJonNWA?si=D8wqFAKnuevbEi8C
+
+[곡]
+가수명: N.Flying
+제목: Video Therapy
+메모: 1st Album Repackage | TURBULENCE
+태그: #엔플라잉
+링크: https://youtu.be/TfQ_5QLYN8k?si=Y9AGmPLlUmw8tIEk
+
+[곡]
+가수명: N.Flying
+제목: 팔불출
+메모: 4th Mini Album | HOW ARE YOU?
+태그: #엔플라잉
+링크: https://youtu.be/NOHGoggs_8M?si=VkBXk6DxwWxjaZdJ
+
+[곡]
+가수명: N.Flying
+제목: ANYWAY
+메모: 4th Mini Album | HOW ARE YOU?
+태그: #엔플라잉
+링크: https://youtu.be/xAV3IV84haw?si=_BgSLQuAyZog5M6o
+
+[곡]
+가수명: N.Flying
+제목: TREE
+메모: Digital Single | Once in a BLUE MOON
+태그: #엔플라잉
+링크: https://youtu.be/YW5OWxvpoKo?si=7ZX9RKNSKJPc8Lxs
+
+[곡]
+가수명: N.Flying
+제목: 피었습니다. (Into Bloom)
+메모: 1st Album Repackage | TURBULENCE
+태그: #엔플라잉
+링크: https://youtu.be/K7MRGydUZ_A?si=61Q_oTNhToQiwOPQ
+
+[곡]
+가수명: N.Flying
+제목: 폭망 (I Like You)
+메모: 8th Mini Album | Dearest
+태그: #엔플라잉
+링크: https://youtu.be/YDSSk-YaZ0s?si=LEPzqSgX_ryHiGE-
+
+[곡]
+가수명: N.Flying
+제목: Sober
+메모: 1st Album Repackage | TURBULENCE
+태그: #엔플라잉
+링크: https://youtu.be/qRi8JRpm2Mw?si=rYCRFIVCjW25w3pc
+
+[곡]
+가수명: N.Flying
+제목: Moonshot
+메모: 1st Album | Man on the Moon
+태그: #엔플라잉
+링크: https://youtu.be/aJX1rqwmlLw?si=C72z9gX-_D99F0aj
+
+[곡]
+가수명: N.Flying
+제목: FLOWER FANTASY
+메모: 7th Mini Album | So, 通 (소통)
+태그: #엔플라잉
+링크: https://youtu.be/jYHB-ak6d94?si=vbeqIRQmou0osOko
+
+[곡]
+가수명: N.Flying
+제목: 아 진짜요. (Oh really.)
+메모: 7th Mini Album | So, 通 (소통)
+태그: #엔플라잉
+링크: https://youtu.be/327IQjRs0J0?si=4R2y5LypKgRFwpwg
+
+[곡]
+가수명: N.Flying
+제목: Autumn Dream
+메모: 6th Mini Album | 야호 (夜好)
+태그: #엔플라잉
+링크: https://youtu.be/ZSAuGQCSlJg?si=K5LCUE13fae-e1-t
+
+[곡]
+가수명: N.Flying
+제목: 굿밤 (GOOD BAM)
+메모: 6th Mini Album | 야호 (夜好)
+태그: #엔플라잉
+링크: https://youtu.be/_2XBCywb8ng?si=CmKkfZuNcY9pVaNI
+
+[곡]
+가수명: N.Flying
+제목: 놔 (Leave It!)
+메모: 5th Mini Album | 봄이 부시게
+태그: #엔플라잉
+링크: https://youtu.be/tdNyIxFXutw?si=Q923oQhogfFjBnRR
+
+[곡]
+가수명: N.Flying
+제목: 봄이 부시게 (Spring Memories)
+메모: 5th Mini Album | 봄이 부시게
+태그: #엔플라잉
+링크: https://youtu.be/nhcoVK2nZSM?si=LzRQvgV6mY1ZVvVE
+
+[곡]
+가수명: N.Flying
+제목: 기가막혀
+메모: 2015 1st Mini Album | 기가 막혀
+태그: #엔플라잉
+링크: https://youtu.be/AtypclY1C5I?si=PremZHNKC9lRsAKh
+
+[곡]
+가수명: N.Flying
+제목: ㅈㅅ (Pardon?)
+메모: 6th Mini Album | 야호 (夜好)
+태그: #엔플라잉
+링크: https://youtu.be/hULMX1OL76A?si=YhOrR48475ch4eK2
+
+[곡]
+가수명: N.Flying
+제목: 4242
+메모: 6th Mini Album | 야호 (夜好)
+태그: #엔플라잉
+링크: https://youtu.be/Pzqjj09kg-E?si=i_W-pQsXp4sbXezJ
+
+[곡]
+가수명: N.Flying
+제목: Stand By Me (Korean Ver.)
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/1kAOtMIuKs0?si=ZrdloAnYH5LFRFN_
+
+[곡]
+가수명: N.Flying
+제목: 뫼비우스 (Moebius)
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/LbV1-kUwzKs?si=Hq9k1qzKH_q3rY3-
+
+[곡]
+가수명: N.Flying
+제목: Endless Summer
+메모: 2016 Japan 2nd Single | Endless Summer
+태그: #엔플라잉
+링크: https://youtu.be/6qpdzFgZ0Uk?si=GKAlwhFC6dre4rsg
+
+[곡]
+가수명: N.Flying
+제목: The World Is Mine
+메모: Japan 1st Full Album | BROTHERHOOD
+태그: #엔플라잉
+링크: https://youtu.be/L9knGNACP-E?si=rmJ0cMSKVu89jLeW
+
+[곡]
+가수명: N.Flying
+제목: Run Like This
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/FIiDdOmHt9g?si=OKHEGD2L4Og-k0X6
+
+[곡]
+가수명: N.Flying
+제목: 아직도 난 그대를 좋아해요 (Still You)
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/ioiQOvsU8Ug?si=-niYRQMCA5BbApT6
+
+[곡]
+가수명: N.Flying
+제목: Ask
+메모: 1st Album | Man on the Moon
+태그: #엔플라잉
+링크: https://youtu.be/_-DZtjA8Ufo?si=aEV-xCEGeMtysXkK
+
+[곡]
+가수명: N.Flying
+제목: 사랑을 마주하고 (Rise Again)
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/tiwgV6WiCaI?si=qmwgdjh2JophUL9u
+
+[곡]
+가수명: N.Flying
+제목: 행복해버리기 (HAPPY ME!)
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/W38YeAGsZCQ?si=F8OyJUQsafNhmW2Q
+
+[곡]
+가수명: N.Flying
+제목: Sunset
+메모: 6th Mini Album | 야호 (夜好)
+태그: #엔플라잉
+링크: https://youtu.be/7HbkqfNDHpg?si=T_YcOAMkBHcMCnBt
+
+[곡]
+가수명: N.Flying
+제목: Songbird
+메모: Japan 1st Full Album | BROTHERHOOD
+태그: #엔플라잉
+링크: https://youtu.be/eJiaMk9rgqk?si=8vrpQF06rXowh3Ec
+
+[곡]
+가수명: N.Flying
+제목: One N Only
+메모: 2015 1st Mini Album | 기가 막혀
+태그: #엔플라잉
+링크: https://youtu.be/mfyhYUWIkV4?si=uFx5Y8QR3otU_cQJ
+
+[곡]
+가수명: N.Flying
+제목: 가슴이 놀래 (Heartbreak)
+메모: 2015 1st Mini Album | 기가 막혀
+태그: #엔플라잉
+링크: https://youtu.be/iTH5HOXgpOU?si=-H7MaFjUIiJiXt7n
+
+[곡]
+가수명: N.Flying
+제목: All in
+메모: 2015 1st Mini Album | 기가 막혀
+태그: #엔플라잉
+링크: https://youtu.be/pAFV8B_Yoiw?si=bH5Cw2cVpWJ54A67
+
+[곡]
+가수명: N.Flying
+제목: 1분 (1 Minute)
+메모: 2015 1st Mini Album | 기가 막혀
+태그: #엔플라잉
+링크: https://youtu.be/-M_WYbptVG8?si=th-0Xl9zF8SVftPN
+
+[곡]
+가수명: N.Flying
+제목: Lonely
+메모: 2015 1st Single Album | Lonely
+태그: #엔플라잉
+링크: https://youtu.be/D5BlM1NMP5c?si=PagEgiVwt_T7Aots
+
+[곡]
+가수명: N.Flying
+제목: Knock Knock
+메모: 2015 1st Single Album | Lonely
+태그: #엔플라잉
+링크: https://youtu.be/zgDJ4V7_eEo?si=3AveXxayFg-YidFa
+
+[곡]
+가수명: N.Flying
+제목: 뻔뻔
+메모: 2015 1st Single Album | Lonely
+태그: #엔플라잉
+링크: https://youtu.be/Yq7bqB0X1k4?si=v6wcHMNbyprCRylJ
+
+[곡]
+가수명: N.Flying
+제목: Let's Get Down To It
+메모: 2nd Mini Album | THE REAL : N.Flying
+태그: #엔플라잉
+링크: https://youtu.be/byHMjS-58R4?si=-dbjoGG9zanlzRxx
+
+[곡]
+가수명: N.Flying
+제목: 진짜가 나타났다
+메모: 2nd Mini Album | THE REAL : N.Flying
+태그: #엔플라잉
+링크: https://youtu.be/nFaMUV6aydc?si=WRtFHA-UWKT_mAog
+
+[곡]
+가수명: N.Flying
+제목: 다행이야
+메모: 2nd Mini Album | THE REAL : N.Flying
+태그: #엔플라잉
+링크: https://youtu.be/fQ7v6N1y9YM?si=atXY5WYSkML24S4Y
+
+[곡]
+가수명: N.Flying
+제목: 정리가 안돼 (Don't Mess With Me)
+메모: 2nd Mini Album | THE REAL : N.Flying
+태그: #엔플라잉
+링크: https://youtu.be/j5SMO9wDeXo?si=gdfMv4LaPIbcVOle
+
+[곡]
+가수명: N.Flying
+제목: 짠해
+메모: 2nd Mini Album | THE REAL : N.Flying
+태그: #엔플라잉
+링크: https://youtu.be/r6Bha5-AxG8?si=hhhawPjli5Sv_Xc3
+
+[곡]
+가수명: N.Flying
+제목: R U Ready?
+메모: 2nd Mini Album | THE REAL : N.Flying
+태그: #엔플라잉
+링크: https://youtu.be/3HXMHc68DV4?si=ZaqHp-FgNEwdwtkM
+
+[곡]
+가수명: N.Flying
+제목: 그러니까 우리
+메모: 3rd Mini Album | 핫티스트 엔플라잉
+태그: #엔플라잉
+링크: https://youtu.be/1p0vN-bSQ5w?si=9soiZ1XY8B5uRtey
+
+[곡]
+가수명: N.Flying
+제목: 뜨거운 감자
+메모: 3rd Mini Album | 핫티스트 엔플라잉
+태그: #엔플라잉
+링크: https://youtu.be/y1iRckD1ys4?si=5cT4CBUppAo8JLSR
+
+[곡]
+가수명: N.Flying
+제목: 골목길에서
+메모: 3rd Mini Album | 핫티스트 엔플라잉
+태그: #엔플라잉
+링크: https://youtu.be/7aRXoudGZag?si=XOpz8YzwxoCr3ghA
+
+[곡]
+가수명: N.Flying
+제목: I Know U Know
+메모: 3rd Mini Album | 핫티스트 엔플라잉
+태그: #엔플라잉
+링크: https://youtu.be/ITD0g7NR5Ww?si=yJhtTj7Umk550I4l
+
+[곡]
+가수명: N.Flying
+제목: 이보다 좋을까
+메모: 3rd Mini Album | 핫티스트 엔플라잉
+태그: #엔플라잉
+링크: https://youtu.be/ATzVOOT5CMM?si=m0VkZ-ZA86uLHAX_
+
+[곡]
+가수명: N.Flying
+제목: 딱 하루만
+메모: 3rd Mini Album | 핫티스트 엔플라잉
+태그: #엔플라잉
+링크: https://youtu.be/5GzN-Ai01z8?si=Of8_G8Y5Ajw-seUZ
+
+[곡]
+가수명: N.Flying
+제목: HOW R U TODAY
+메모: 4th Mini Album HOW ARE YOU?
+태그: #엔플라잉
+링크: https://youtu.be/n5t0wpWJzkw?si=EYe-rnlZz5ChugvX
+
+[곡]
+가수명: N.Flying
+제목: UP ALL NIGHT
+메모: 4th Mini Album | HOW ARE YOU?
+태그: #엔플라잉
+링크: https://youtu.be/0HrlSFAELbI?si=wwfHjgzSViAQhBg2
+
+[곡]
+가수명: N.Flying
+제목: 꽃 (Like a Flower)
+메모: Digital Single Fly high Project | #1꽃
+태그: #엔플라잉
+링크: https://youtu.be/B6fTdRyaRO0?si=lS2pXDx5jtABCvs0
+
+[곡]
+가수명: N.Flying
+제목: 불놀이 (Flowerwork)
+메모: 5th Mini Album | 봄이 부시게
+태그: #엔플라잉
+링크: https://youtu.be/Yu-Dpc9s-W4?si=PytlUYOzvKenpk-3
+
+[곡]
+가수명: N.Flying
+제목: BASKET
+메모: Japan Debut Single | BASKET
+태그: #엔플라잉
+링크: https://youtu.be/FPOATF1PHoQ?si=82YYtVfOqDMVGHII
+
+[곡]
+가수명: N.Flying
+제목: Bitter Sweet
+메모: Japan Debut Single | BASKET
+태그: #엔플라잉
+링크: https://youtu.be/fkMBT3mTY6k?si=xHfK_gzEXHCa8qaA
+
+[곡]
+가수명: N.Flying
+제목: Kiss me, Miss me
+메모: Japan Debut Single | BASKET
+태그: #엔플라잉
+링크: 
+
+[곡]
+가수명: N.Flying
+제목: One and Only (Japanese Ver.)
+메모: Japan indie 2nd Single | One and Only
+태그: #엔플라잉
+링크: https://youtu.be/zYoLNcM9Z3c?si=MPgECytkomgLckgi
+
+[곡]
+가수명: N.Flying
+제목: Reason
+메모: Japan indie 2nd Single | One and Only
+태그: #엔플라잉
+링크: 
+
+[곡]
+가수명: N.Flying
+제목: Oh yeah
+메모: Japan indie 2nd Single | One and Only
+태그: #엔플라잉
+링크: 
+
+[곡]
+가수명: N.Flying
+제목: Knock Knock (Japanese Ver.)
+메모: Japan 1st Single | Knock Knock
+태그: #엔플라잉
+링크: https://youtu.be/_o5QfuPdgpo?si=GcK4u4DyCZYI_bx3
+
+[곡]
+가수명: N.Flying
+제목: Gigamakkyo (Japanese Ver.)
+메모: Japan 1st Single | Knock Knock
+태그: #엔플라잉
+링크: https://youtu.be/S8RCxbrVSDU?si=TeUefNeEHCMWJJSa
+
+[곡]
+가수명: N.Flying
+제목: All In (Japanese Ver.)
+메모: Japan 1st Single | Knock Knock
+태그: #엔플라잉
+링크: https://youtu.be/iKsKmK6k4ic?si=5VwTxtocLo9iIS7c
+
+[곡]
+가수명: N.Flying
+제목: Hello SOLO
+메모: Japan 2nd Single | Endless Summer
+태그: #엔플라잉
+링크: https://youtu.be/PbVkaBa-U6U?si=iziAxEbqB2bKokxy
+
+[곡]
+가수명: N.Flying
+제목: Lonely (Japanese ver.)
+메모: Japan 2nd Single | Endless Summer
+태그: #엔플라잉
+링크: 
+
+[곡]
+가수명: N.Flying
+제목: Stand By Me
+메모: Japan 1st Full Album | BROTHERHOOD
+태그: #엔플라잉
+링크: https://youtu.be/z7tsUZLae7Y?si=Rs3NQ50XyawiMHIX
+
+[곡]
+가수명: N.Flying
+제목: Pinhole
+메모: Japan 1st Full Album | BROTHERHOOD
+태그: #엔플라잉
+링크: https://youtu.be/srMiin03Y3M?si=Yya0BOgHy8rbK-t_
+
+[곡]
+가수명: N.Flying
+제목: Wanna Be
+메모: Japan 1st Full Album | BROTHERHOOD
+태그: #엔플라잉
+링크: https://youtu.be/HLz6vsdf910?si=MjqbTkZq1z3Dphxh
+
+[곡]
+가수명: N.Flying
+제목: Color
+메모: Japan 1st Full Album | BROTHERHOOD
+태그: #엔플라잉
+링크: https://youtu.be/OMekQ41jU_4?si=lmdaoFEYBSeLeuHr
+
+[곡]
+가수명: N.Flying
+제목: Lupin
+메모: Japan 1st Full Album | BROTHERHOOD
+태그: #엔플라잉
+링크: https://youtu.be/j1WsSJ9SFls?si=MFRu692dd4A3jtF9
+
+[곡]
+가수명: N.Flying
+제목: Run
+메모: Japan 1st Full Album | BROTHERHOOD
+태그: #엔플라잉
+링크: https://youtu.be/UotZ5GnNXeI?si=42Vj1PTftdAz25d3
+
+[곡]
+가수명: N.Flying
+제목: Run (Korean ver.)
+메모: 2024 N.Flying LIVE 'HIDE-OUT'
+태그: #엔플라잉
+링크: https://youtu.be/9ES1KpnQxhg?si=f8FEIlafl5la3S4T
+
+[곡]
+가수명: N.Flying
+제목: Delight
+메모: Japan 1st Full Album | BROTHERHOOD
+태그: #엔플라잉
+링크: https://youtu.be/b5nmHKPUlnM?si=RMjKHZJk_KAQgrQM
+
+[곡]
+가수명: N.Flying
+제목: Rooftop (Japanese ver.)
+메모: Japan 1st Full Album | BROTHERHOOD
+태그: #엔플라잉
+링크: https://youtu.be/lEU06rYIg1U?si=PMbPy0Ynp033NQdl
+
+[곡]
+가수명: N.Flying
+제목: Doll
+메모: Japan 3rd Single | Doll/Kick-Ass
+태그: #엔플라잉
+링크: https://youtu.be/CXkEA9wEo70?si=DX35-xMj11nzd_Q-
+
+[곡]
+가수명: N.Flying
+제목: Kick-Ass
+메모: Japan 3rd Single | Doll/Kick-Ass
+태그: #엔플라잉
+링크: https://youtu.be/aVvSVMuR7KE?si=qtc0FlThVOpndRBY
+
+[곡]
+가수명: N.Flying
+제목: 꽃바람 (YOUTH)
+메모: 7th Mini Album | So, 通 (소통)
+태그: #엔플라잉
+링크: https://youtu.be/ctsygBvSjQg?si=bca3TJvlX7pHsXlt
+
+[곡]
+가수명: N.Flying
+제목: 아무거나 (I’M GONNA)
+메모: 7th Mini Album | So, 通 (소통)
+태그: #엔플라잉
+링크: https://youtu.be/AAzdZbl6pbo?si=87o193cdwmAd0Olv
+
+[곡]
+가수명: N.Flying
+제목: 마지막 무대 (Last Song)
+메모: 7th Mini Album | So, 通 (소통)
+태그: #엔플라잉
+링크: https://youtu.be/6RxUaJ5aLQs?si=b6MR75bKKb6mPy-B
+
+[곡]
+가수명: N.Flying
+제목: 에요 (E-YO)
+메모: 7th Mini Album | So, 通 (소통)
+태그: #엔플라잉
+링크: https://youtu.be/lY-Y6lKp5Sk?si=p6KCHtfknVsrGPRl
+
+[곡]
+가수명: N.Flying
+제목: STARLIGHT
+메모: Digital Single | STARLIGHT
+태그: #엔플라잉
+링크: https://youtu.be/k2bjShbdb4U?si=XV-bLiF2cCKHYDde
+
+[곡]
+가수명: N.Flying
+제목: 지우개 (Undo)
+메모: 1st Album | Man on the Moon
+태그: #엔플라잉
+링크: https://youtu.be/PEIFT-Pz1jw?si=PAr2KiaLCl7fPlj9
+
+[곡]
+가수명: N.Flying
+제목: You
+메모: 1st Album | Man on the Moon
+태그: #엔플라잉
+링크: https://youtu.be/vXYOXTVykjQ?si=Y3Sdxqnt1b5Dsi-o
+
+[곡]
+가수명: N.Flying
+제목: 파란 배경 (Blue Scene)
+메모: 1st Album | Man on the Moon
+태그: #엔플라잉
+링크: https://youtu.be/YFzDBWnMdo4?si=8viSeEtvRFSWsjf9
+
+[곡]
+가수명: N.Flying
+제목: 이 별 저 별 (Fate)
+메모: 1st Album | Man on the Moon
+태그: #엔플라잉
+링크: https://youtu.be/Cq9zXLJXs5c?si=cK27xHkz_TLYDkqG
+
+[곡]
+가수명: N.Flying
+제목: 빈집 (Zip.)
+메모: 1st Album | Man on the Moon
+태그: #엔플라잉
+링크: https://youtu.be/M_8jP3tzfmQ?si=G-HEyThKaXv7hu8d
+
+[곡]
+가수명: N.Flying
+제목: 너에게 (To You)
+메모: 1st Album | Man on the Moon
+태그: #엔플라잉
+링크: https://youtu.be/AI2BxQulej0?si=POTZIaozgwwI9vem
+
+[곡]
+가수명: N.Flying
+제목: Amnesia
+메모: Japan 4th Single | Amnesia
+태그: #엔플라잉
+링크: https://youtu.be/xZ5X6X9RAW4?si=jzNF9NWCZRHToCPs
+
+[곡]
+가수명: N.Flying
+제목: Let Me Know
+메모: Japan 4th Single | Amnesia
+태그: #엔플라잉
+링크: https://youtu.be/1U2wLsJAkLM?si=juEkjfa0k0P5GsWk
+
+[곡]
+가수명: N.Flying
+제목: 그 밤 (The Night)
+메모: 8th Mini Album | Dearest
+태그: #엔플라잉
+링크: https://youtu.be/TDH5mjxvvXM?si=i8iOAG1x601oVbpP
+
+[곡]
+가수명: N.Flying
+제목: Firefly
+메모: 8th Mini Album | Dearest
+태그: #엔플라잉
+링크: https://youtu.be/2yvuOdtB1RQ?si=3GTETUvYCt0qIzna
+
+[곡]
+가수명: N.Flying
+제목: 일 (1)
+메모: 8th Mini Album | Dearest
+태그: #엔플라잉
+링크: https://youtu.be/4lxwR_GAKeU?si=bGwpWFlwgQDGemxE
+
+[곡]
+가수명: N.Flying
+제목: Monster
+메모: 8th Mini Album | Dearest
+태그: #엔플라잉
+링크: https://youtu.be/9XEqc25ecuI?si=cXLQSpfFcw4QTIu_
+
+[곡]
+가수명: N.Flying
+제목: 하나둘씩 (Love In Memory)
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/qTl8TLcARco?si=Glm-XIcSIGsmIyEc
+
+[곡]
+가수명: N.Flying
+제목: Born To Be
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/v3aS9WYBZ6w?si=SxmToKM5IwssuoAV
+
+[곡]
+가수명: N.Flying
+제목: LOG
+메모: 2nd Album | Everlasting
+태그: #엔플라잉
+링크: https://youtu.be/pf3UQkAzIkQ?si=-szh0un1fQ-rzgCN
+
+[곡]
+가수명: N.Flying
+제목: 예쁘다 예뻐
+메모: 연애포차 OST Part 4
+태그: #엔플라잉
+링크: https://youtu.be/6wA_5q1uLPs?si=uieZpn1bocdg-FMQ
+
+[곡]
+가수명: N.Flying
+제목: Let Me Show You
+메모: 아는 와이프 OST Part 4
+태그: #엔플라잉
+링크: https://youtu.be/DWd-0zR6qrI?si=38EJCl8eSCfecQw8
+
+[곡]
+가수명: N.Flying
+제목: 옥탑방 프리덤 (Rooftop Freedom)
+메모: 더 콜 2 (The Call 2) 첫 번째 프로젝트 With. UV
+태그: #엔플라잉
+링크: https://youtu.be/IS_rXUzuNeI?si=yEw9C0QZS7xa-Khf
+
+[곡]
+가수명: N.Flying
+제목: ROCKSTAR
+메모: 더 콜 2 (The Call 2) 네 번째 프로젝트  With. 딘딘
+태그: #엔플라잉
+링크: https://youtu.be/hSxh29bHSWc?si=PdtL1vkvspwtCmKg
+
+[곡]
+가수명: N.Flying
+제목: Rain
+메모: 더 콜 2 (The Call 2) 다섯 번째 프로젝트 With. 노을
+태그: #엔플라잉
+링크: https://youtu.be/ehCylHJbOIc?si=MKmZbCN015JWe9ZI
+
+[곡]
+가수명: N.Flying
+제목: 재껴라
+메모: 더 콜 2 (The Call 2) Final 프로젝트 With. 노을, UV, 딘딘
+태그: #엔플라잉
+링크: https://youtu.be/kd7cBvYowJ4?si=CxaVjtq07Pmi2YOa
+
+[곡]
+가수명: N.Flying
+제목: 괜찮아
+메모: 다 들어줄개 III
+태그: #엔플라잉
+링크: https://youtu.be/TbRVDRh0um0?si=gngw4K0Gi8xMl8Ks
+
+[곡]
+가수명: N.Flying
+제목: Don't Cry
+메모: 투유프로젝트 - 슈가맨3 EPISODE.10
+태그: #엔플라잉
+링크: https://youtu.be/RE47uA3B2Mc?si=eFf01AgkTRMIGFlo
+
+[곡]
+가수명: N.Flying
+제목: From You
+메모: 앨리스 OST Part 4
+태그: #엔플라잉
+링크: https://youtu.be/RtnOaeBU0wM?si=vzw0Cxj29fD2IftO
+
+[곡]
+가수명: N.Flying
+제목: I`ll Find You
+메모: 암행어사 OST Part 1
+태그: #엔플라잉
+링크: 
+
+[곡]
+가수명: N.Flying
+제목: Chance
+메모: 로드 오브 히어로즈 OST Part 1
+태그: #엔플라잉
+링크: https://youtu.be/w9nWs-IsKOE?si=auEA3dLO2dKcrek0
+
+[곡]
+가수명: N.Flying
+제목: 너에게로 가는 길
+메모: 동감 X 엔플라잉
+태그: #엔플라잉
+링크: https://youtu.be/1X4P8R5L5NQ?si=U6T6qIow_m2-OIwm
+
+[곡]
+가수명: N.Flying
+제목: 아름다운 밤
+메모: 모범택시 2 OST Part 4
+태그: #엔플라잉
+링크: https://youtu.be/y6TzQlZNsqc?si=2VzBo1FaQ92SrvJ1
+
+[곡]
+가수명: N.Flying
+제목: Lover
+메모: Lover
+태그: #엔플라잉
+링크: https://youtu.be/Mvx8If7Tzk0?si=p1EKjS55o_axyW3I
+
+[곡]
+가수명: N.Flying
+제목: Star
+메모: 선재 업고 튀어 OST Part 2
+태그: #엔플라잉
+링크: https://youtu.be/OTPQ0IlDwFs?si=qYQZSQRs0sQGeDJS

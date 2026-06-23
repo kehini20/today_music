@@ -13,9 +13,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'backup/backup_models.dart';
 import 'backup/backup_serializer.dart';
-import 'sample_songs.dart';
 import 'ocr/text_ocr_service.dart';
+import 'offers/offer_repository.dart';
 import 'paste_parser.dart';
+import 'sample_songs.dart';
 import 'share_text.dart';
 import 'song.dart';
 import 'song_import.dart';
@@ -41,12 +42,18 @@ const Color updateAvailableColor = Color(0xFF5B8DEF);
 const int maxSongSetCount = 30;
 const int maxSongMemoLength = 140;
 const int maxSongTagCount = 10;
-const String appSemanticVersion = '0.7.7';
-const String appDisplayVersion = 'Alpha 0.7.7';
+const String appSemanticVersion = '0.7.8';
+const String appDisplayVersion = 'Alpha 0.7.8';
 const String songTxtImportGuidance =
     '곡 목록 TXT 파일을 선택하세요.\n앱 전체 백업 JSON 파일은 여기서 불러올 수 없습니다.';
 const String appBackupImportGuidance =
     '앱 전체 백업 JSON 파일을 선택하세요.\n곡 목록 TXT 파일은 앱 전체 복원에 사용할 수 없습니다.';
+const String appBackupRestoreDescription =
+    '백업 파일로 앱 데이터를 복원합니다.\n'
+    '현재 데이터는 모두 삭제되고, 백업 데이터로 대체됩니다.';
+const String appBackupRestoreWarning =
+    '복원하면 현재 데이터는 모두 삭제되고,\n'
+    '선택한 백업 파일의 데이터로 대체됩니다.';
 const String imageRecognitionHelpMessage =
     '셋리스트 이미지를 선택하면 이미지 속 글자를 읽어 곡 목록을 분석합니다. '
     '인식 결과가 정확하지 않을 수 있으므로 저장 전 가수명과 곡명을 확인해 주세요.';
@@ -176,6 +183,10 @@ class SongStorage {
   static const String _disabledRandomArtistsKey = 'tdm_disabled_random_artists';
   static const String _lastAddSongTabKey = 'tdm_last_add_song_tab';
   static const String _artistOrderKey = 'tdm_artist_order';
+  static const String _offerNotificationsEnabledKey =
+      'tdm_offer_notifications_enabled';
+  static const String _seenOfferIdsKey = 'tdm_seen_offer_ids';
+  static const String _importedOfferIdsKey = 'tdm_imported_offer_ids';
 
   static Future<List<Song>?> loadSongs() async {
     try {
@@ -311,6 +322,64 @@ class SongStorage {
     }
   }
 
+  static Future<bool> loadOfferNotificationsEnabled() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return preferences.getBool(_offerNotificationsEnabledKey) ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> saveOfferNotificationsEnabled(bool value) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool(_offerNotificationsEnabledKey, value);
+    } catch (_) {
+      // Offer notification settings should never crash the app.
+    }
+  }
+
+  static Future<Set<String>> loadSeenOfferIds() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return (preferences.getStringList(_seenOfferIdsKey) ?? const []).toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  static Future<void> saveSeenOfferIds(Set<String> ids) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList(_seenOfferIdsKey, ids.toList()..sort());
+    } catch (_) {
+      // Offer state should never crash the app.
+    }
+  }
+
+  static Future<Set<String>> loadImportedOfferIds() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return (preferences.getStringList(_importedOfferIdsKey) ?? const [])
+          .toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  static Future<void> saveImportedOfferIds(Set<String> ids) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList(
+        _importedOfferIdsKey,
+        ids.toList()..sort(),
+      );
+    } catch (_) {
+      // Offer state should never crash the app.
+    }
+  }
+
   static Future<String> loadDefaultShareMessage() async {
     try {
       final preferences = await SharedPreferences.getInstance();
@@ -410,6 +479,9 @@ class SongStorage {
       preferences.remove(_disabledRandomArtistsKey),
       preferences.remove(_lastAddSongTabKey),
       preferences.remove(_artistOrderKey),
+      preferences.remove(_offerNotificationsEnabledKey),
+      preferences.remove(_seenOfferIdsKey),
+      preferences.remove(_importedOfferIdsKey),
     ]);
   }
 }
@@ -497,7 +569,12 @@ enum SongStorageTab { songs, sets }
 enum RandomMode { artistRandom, songSets }
 
 class TodayMusicApp extends StatelessWidget {
-  const TodayMusicApp({super.key});
+  final OfferRepository offerRepository;
+
+  const TodayMusicApp({
+    super.key,
+    this.offerRepository = const HttpOfferRepository(),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -552,13 +629,15 @@ class TodayMusicApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const TodaySongPage(),
+      home: TodaySongPage(offerRepository: offerRepository),
     );
   }
 }
 
 class TodaySongPage extends StatefulWidget {
-  const TodaySongPage({super.key});
+  final OfferRepository offerRepository;
+
+  const TodaySongPage({super.key, required this.offerRepository});
 
   @override
   State<TodaySongPage> createState() => _TodaySongPageState();
@@ -585,6 +664,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
   List<String> _selectedSongSetIds = [];
   AddSongTab _lastAddSongTab = AddSongTab.individual;
   List<String> _artistOrder = [];
+  bool _offerNotificationsEnabled = true;
+  Set<String> _seenOfferIds = {};
+  Set<String> _importedOfferIds = {};
+  bool _isOfferPromptOpen = false;
 
   @override
   void initState() {
@@ -606,6 +689,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
     final selectedSongSetIds = await SongStorage.loadSelectedSongSetIds();
     final disabledRandomArtists = await SongStorage.loadDisabledRandomArtists();
     final samplePromptChecked = await SongStorage.isSamplePromptChecked();
+    final offerNotificationsEnabled =
+        await SongStorage.loadOfferNotificationsEnabled();
+    final seenOfferIds = await SongStorage.loadSeenOfferIds();
+    final importedOfferIds = await SongStorage.loadImportedOfferIds();
     final defaultShareMessage = await SongStorage.loadDefaultShareMessage();
     final lastAddSongTab = await SongStorage.loadLastAddSongTab();
     final savedArtistOrder = await SongStorage.loadArtistOrder();
@@ -648,6 +735,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _resultSongSetName = null;
       _defaultShareMessage = defaultShareMessage;
       _lastAddSongTab = lastAddSongTab;
+      _offerNotificationsEnabled = offerNotificationsEnabled;
+      _seenOfferIds = seenOfferIds;
+      _importedOfferIds = importedOfferIds;
       _includeTodayTag = true;
       _shareTextController.clear();
     });
@@ -659,12 +749,10 @@ class _TodaySongPageState extends State<TodaySongPage> {
       ]);
     }
 
-    if ((savedSongs == null || savedSongs.isEmpty) && !samplePromptChecked) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _showSampleSongsPromptDialog();
-        }
-      });
+    if ((savedSongs == null || savedSongs.isEmpty) &&
+        !samplePromptChecked &&
+        offerNotificationsEnabled) {
+      await _loadAndShowAvailableOffer();
     }
   }
 
@@ -828,62 +916,165 @@ class _TodaySongPageState extends State<TodaySongPage> {
     });
   }
 
-  Future<void> _showSampleSongsPromptDialog() async {
+  Future<void> _loadAndShowAvailableOffer() async {
+    if (_isOfferPromptOpen ||
+        !_offerNotificationsEnabled ||
+        _songs.isNotEmpty) {
+      return;
+    }
+
+    final offers = await widget.offerRepository.loadCatalog();
+    if (!mounted ||
+        !_offerNotificationsEnabled ||
+        _songs.isNotEmpty ||
+        _isOfferPromptOpen) {
+      return;
+    }
+
+    final available = activeUnseenOffers(
+      offers: offers,
+      now: DateTime.now(),
+      seenOfferIds: _seenOfferIds,
+      importedOfferIds: _importedOfferIds,
+    );
+    if (available.isEmpty) {
+      return;
+    }
+
+    _isOfferPromptOpen = true;
+    try {
+      await _showOfferedDataPromptDialog(available.first);
+    } finally {
+      _isOfferPromptOpen = false;
+    }
+  }
+
+  Future<void> _showOfferedDataPromptDialog(OfferedDataPackage offer) async {
+    var doNotShowAgain = false;
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('안내'),
-          content: const Text(
-            '샘플곡으로 시작할까요?\n\n'
-            '오늘의 한 곡 뽑기를 바로 체험할 수 있도록\n'
-            '샘플곡 몇 곡을 추가할 수 있어요.\n\n'
-            '샘플곡은 나중에 수정하거나 삭제할 수 있습니다.',
-          ),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      await SongStorage.setSamplePromptChecked(true);
-                      if (dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop();
-                      }
-                    },
-                    child: const Text('빈 저장소', maxLines: 1),
-                  ),
+        return StatefulBuilder(
+          builder: (context, refreshDialog) {
+            Future<void> rememberChoice() async {
+              _seenOfferIds.add(offer.id);
+              await SongStorage.saveSeenOfferIds(_seenOfferIds);
+              if (doNotShowAgain) {
+                _offerNotificationsEnabled = false;
+                await SongStorage.saveOfferNotificationsEnabled(false);
+              }
+            }
+
+            return AlertDialog(
+              key: const ValueKey('offered-data-prompt'),
+              title: const Text('안내'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '기간 한정 테스트 데이터를 불러올까요?',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(offer.description),
+                    const SizedBox(height: 16),
+                    Text(offer.note),
+                    const SizedBox(height: 12),
+                    CheckboxListTile(
+                      key: const ValueKey('offer-do-not-show-again'),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text('다시 보지 않기'),
+                      value: doNotShowAgain,
+                      onChanged: (value) {
+                        refreshDialog(() {
+                          doNotShowAgain = value ?? false;
+                        });
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      await SongStorage.setSamplePromptChecked(true);
-                      if (!mounted) {
-                        return;
-                      }
-
-                      setState(() {
-                        _songs = ensureSongIds(sampleSongs);
-                        _syncArtistFilterState();
-                      });
-                      _saveSongs();
-                      _saveDisabledRandomArtists();
-
-                      if (dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop();
-                      }
-                    },
-                    child: const Text('샘플곡', maxLines: 1),
-                  ),
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () async {
+                    await rememberChoice();
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                    await _loadOfferedData(offer);
+                  },
+                  child: Text(offer.primaryButton, maxLines: 1),
+                ),
+                OutlinedButton(
+                  onPressed: () async {
+                    await rememberChoice();
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                  },
+                  child: Text(offer.secondaryButton, maxLines: 1),
                 ),
               ],
-            ),
-          ],
+            );
+          },
         );
       },
     );
+  }
+
+  Future<void> _loadOfferedData(OfferedDataPackage offer) async {
+    try {
+      final text = await widget.offerRepository.loadData(offer);
+      final parsedSongs = _parseImportedSongs(text);
+      if (!mounted) {
+        return;
+      }
+      if (parsedSongs.isEmpty) {
+        _showRootSnackBar('불러올 수 있는 테스트 데이터가 없습니다.');
+        return;
+      }
+
+      final drafts = parsedSongs
+          .map(
+            (song) => PasteSongDraft(
+              sourceLine: '${song.artist} - ${song.title}',
+              artist: song.artist,
+              title: song.title,
+              tags: song.tags,
+              memo: song.memo,
+              link: song.link,
+            ),
+          )
+          .toList();
+      _showPasteSongAnalysisDialog(
+        PasteSongAnalysis(
+          inferredArtist: '',
+          drafts: drafts,
+          candidates: buildPasteSongCandidates(
+            drafts: drafts,
+            inferredArtist: '',
+            existingSongs: _songs,
+          ),
+        ),
+        dialogTitle: offer.title,
+        onSongsAdded: () {
+          _importedOfferIds.add(offer.id);
+          SongStorage.saveImportedOfferIds(_importedOfferIds);
+        },
+      );
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('Offered data load failed: $error\n$stackTrace');
+      }
+      if (mounted) {
+        _showRootSnackBar('테스트 데이터를 불러오지 못했어요. 다시 시도해 주세요.');
+      }
+    }
   }
 
   String _buildShareText(Song song) {
@@ -1668,6 +1859,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       defaultShareMessage: _defaultShareMessage,
       randomMode: _randomMode.name,
       artistOrder: List<String>.of(_artistOrder),
+      offerNotificationsEnabled: _offerNotificationsEnabled,
     );
   }
 
@@ -1737,10 +1929,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
         context: context,
         builder: (confirmContext) {
           return AlertDialog(
-            title: const Text('앱 백업을 불러올까요?'),
+            title: const Text('앱 백업을 복원할까요?'),
             content: Text(
-              '앱 백업을 불러오면 현재 앱 데이터가 백업 파일 내용으로 바뀝니다.\n'
-              '계속할까요?\n\n'
+              '$appBackupRestoreWarning\n\n'
               '곡 ${document.summary.songCount}곡 · '
               '세트 ${document.summary.setCount}개 · '
               '좋아요 ${document.summary.favoriteCount}곡',
@@ -1752,7 +1943,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
               ),
               FilledButton(
                 onPressed: () => Navigator.of(confirmContext).pop(true),
-                child: const Text('백업 불러오기'),
+                child: const Text('복원하기'),
               ),
             ],
           );
@@ -1813,6 +2004,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       _artistSortMode = _artistOrder.isEmpty
           ? ArtistSortMode.defaultOrder
           : ArtistSortMode.custom;
+      _offerNotificationsEnabled = restored.offerNotificationsEnabled;
       _selectedSong = null;
       _lastResultSong = null;
       _isSponsorPick = false;
@@ -1830,6 +2022,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
       SongStorage.saveDisabledRandomArtists(_disabledRandomArtists),
       SongStorage.saveDefaultShareMessage(_defaultShareMessage),
       SongStorage.saveArtistOrder(_artistOrder),
+      SongStorage.saveOfferNotificationsEnabled(_offerNotificationsEnabled),
     ]);
   }
 
@@ -2117,7 +2310,8 @@ class _TodaySongPageState extends State<TodaySongPage> {
       builder: (dialogContext) {
         return SettingsDialog(
           initialDefaultMessage: _defaultShareMessage,
-          onSave: (message) {
+          initialOfferNotificationsEnabled: _offerNotificationsEnabled,
+          onSave: (message, offerNotificationsEnabled) {
             if (!mounted) {
               return;
             }
@@ -2125,12 +2319,16 @@ class _TodaySongPageState extends State<TodaySongPage> {
             final trimmedMessage = message.trim();
             setState(() {
               _defaultShareMessage = trimmedMessage;
+              _offerNotificationsEnabled = offerNotificationsEnabled;
               final selectedSong = _selectedSong;
               if (selectedSong != null) {
                 _resetShareText(selectedSong);
               }
             });
             SongStorage.saveDefaultShareMessage(trimmedMessage);
+            SongStorage.saveOfferNotificationsEnabled(
+              offerNotificationsEnabled,
+            );
           },
           onContactEmail: _openContactEmail,
           onOpenOfficialX: _openOfficialX,
@@ -7588,7 +7786,8 @@ class ArtistSongGroupTile extends StatelessWidget {
 
 class SettingsDialog extends StatefulWidget {
   final String initialDefaultMessage;
-  final ValueChanged<String> onSave;
+  final bool initialOfferNotificationsEnabled;
+  final void Function(String message, bool offerNotificationsEnabled) onSave;
   final VoidCallback onContactEmail;
   final VoidCallback onOpenOfficialX;
   final Future<void> Function() onExportBackup;
@@ -7598,6 +7797,7 @@ class SettingsDialog extends StatefulWidget {
   const SettingsDialog({
     super.key,
     required this.initialDefaultMessage,
+    required this.initialOfferNotificationsEnabled,
     required this.onSave,
     required this.onContactEmail,
     required this.onOpenOfficialX,
@@ -7612,6 +7812,7 @@ class SettingsDialog extends StatefulWidget {
 
 class _SettingsDialogState extends State<SettingsDialog> {
   late final TextEditingController _defaultMessageController;
+  late bool _offerNotificationsEnabled;
   bool _isManagingData = false;
 
   @override
@@ -7620,6 +7821,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     _defaultMessageController = TextEditingController(
       text: widget.initialDefaultMessage,
     );
+    _offerNotificationsEnabled = widget.initialOfferNotificationsEnabled;
   }
 
   @override
@@ -7629,7 +7831,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 
   void _save() {
-    widget.onSave(_defaultMessageController.text);
+    widget.onSave(_defaultMessageController.text, _offerNotificationsEnabled);
     Navigator.of(context).pop();
   }
 
@@ -7670,6 +7872,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              key: const ValueKey('offer-notifications-setting'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('제공 데이터 알림 받기'),
+              subtitle: const Text('기간 한정 테스트 데이터나 이벤트 데이터가 있을 때 안내를 표시합니다.'),
+              value: _offerNotificationsEnabled,
+              onChanged: (value) {
+                setState(() {
+                  _offerNotificationsEnabled = value;
+                });
+              },
+            ),
             const Divider(height: 28),
             Text('문의 및 소식', style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 6),
@@ -7703,7 +7918,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
             ),
             const SizedBox(height: 8),
             Text(
-              '백업 파일로 앱 데이터를 복원합니다. 현재 데이터는 바뀔 수 있습니다.',
+              appBackupRestoreDescription,
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),

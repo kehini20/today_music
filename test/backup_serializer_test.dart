@@ -17,6 +17,7 @@ void main() {
     String defaultShareMessage = '오늘은 이 곡을 들어보세요 🎧',
     String randomMode = 'artistRandom',
     List<String>? artistOrder,
+    bool offerNotificationsEnabled = true,
   }) {
     return BackupSourceSnapshot(
       songs: songs ?? const [],
@@ -26,6 +27,7 @@ void main() {
       defaultShareMessage: defaultShareMessage,
       randomMode: randomMode,
       artistOrder: artistOrder ?? const [],
+      offerNotificationsEnabled: offerNotificationsEnabled,
     );
   }
 
@@ -91,6 +93,7 @@ void main() {
           selectedSetIds: const ['set-keyland'],
           randomMode: 'songSets',
           artistOrder: const ['키(KEY) 漢字'],
+          offerNotificationsEnabled: false,
         ),
         appVersion: '0.7.0',
         createdAt: DateTime.parse('2026-06-20T12:00:00+09:00'),
@@ -109,6 +112,7 @@ void main() {
       expect(restored.defaultShareMessage, '오늘은 이 곡을 들어보세요 🎧');
       expect(restored.randomMode, 'songSets');
       expect(restored.artistOrder, ['키(KEY) 漢字']);
+      expect(restored.offerNotificationsEnabled, isFalse);
       expect(decoded.summary.favoriteCount, 1);
     });
 
@@ -258,6 +262,7 @@ void main() {
       expect(document.data.appSettings.randomMode, 'artistRandom');
       expect(document.data.shareSettings.defaultMessage, isEmpty);
       expect(document.data.appSettings.artistOrder, isEmpty);
+      expect(document.data.appSettings.offerNotificationsEnabled, isTrue);
     });
 
     test('rejects duplicate artists in optional custom order', () {

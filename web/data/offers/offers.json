@@ -1,0 +1,18 @@
+{
+  "offers": [
+    {
+      "id": "limited_test_n_flying_202606",
+      "enabled": true,
+      "notify": true,
+      "title": "기간 한정 테스트 데이터",
+      "artistLabel": "N.Flying",
+      "description": "앱 사용 흐름을 확인할 수 있도록\nN.Flying 곡 데이터를 테스트용으로 제공합니다.",
+      "note": "불러온 데이터는 직접 수정 또는 삭제할 수 있습니다.",
+      "dataPath": "/data/offers/limited_test_n_flying_202606.txt",
+      "startAt": "2026-06-01T00:00:00+09:00",
+      "endAt": "2026-10-31T23:59:59+09:00",
+      "primaryButton": "테스트 데이터 불러오기",
+      "secondaryButton": "직접 시작"
+    }
+  ]
+}
