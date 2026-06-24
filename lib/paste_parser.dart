@@ -298,7 +298,8 @@ class _PasteSongParser {
     String inferredArtist,
   ) {
     final candidates = <PasteSongCandidate>[];
-    final comparisonSongs = existingSongs.toList();
+    final storedComparisonSongs = existingSongs.toList();
+    final internalExactSongs = <String, Song>{};
     final normalizedInferredArtist = inferredArtist.trim();
 
     for (final draft in drafts) {
@@ -324,10 +325,38 @@ class _PasteSongParser {
         memo: draft.memo,
         link: draft.link,
       );
-      final importedCandidate = classifyImportedSong(
+      var importedCandidate = classifyImportedSong(
         incoming: parsedSong,
-        existingSongs: comparisonSongs,
+        existingSongs: storedComparisonSongs,
       );
+
+      if (importedCandidate.status == SongImportCandidateStatus.newSong) {
+        final exactKey = songIdentityKey(parsedSong);
+        final internalDuplicate = internalExactSongs[exactKey];
+        if (internalDuplicate == null) {
+          internalExactSongs[exactKey] = parsedSong;
+        } else {
+          importedCandidate = SongImportCandidate(
+            incomingSong: parsedSong,
+            existingSong: internalDuplicate,
+            mergedSong: internalDuplicate,
+            status: SongImportCandidateStatus.identical,
+          );
+        }
+      } else if (importedCandidate.status ==
+          SongImportCandidateStatus.updateAvailable) {
+        final existing = importedCandidate.existingSong;
+        final merged = importedCandidate.mergedSong;
+        if (existing != null && merged != null) {
+          final index = storedComparisonSongs.indexWhere(
+            (song) => identical(song, existing),
+          );
+          if (index != -1) {
+            storedComparisonSongs[index] = merged;
+          }
+        }
+      }
+
       final status = switch (importedCandidate.status) {
         SongImportCandidateStatus.newSong => PasteSongCandidateStatus.newSong,
         SongImportCandidateStatus.updateAvailable =>
@@ -348,21 +377,6 @@ class _PasteSongParser {
           changes: importedCandidate.changes,
         ),
       );
-
-      if (status == PasteSongCandidateStatus.newSong) {
-        comparisonSongs.add(parsedSong);
-      } else if (status == PasteSongCandidateStatus.updateAvailable) {
-        final existing = importedCandidate.existingSong;
-        final merged = importedCandidate.mergedSong;
-        if (existing != null && merged != null) {
-          final index = comparisonSongs.indexWhere(
-            (song) => identical(song, existing),
-          );
-          if (index != -1) {
-            comparisonSongs[index] = merged;
-          }
-        }
-      }
     }
 
     return candidates;

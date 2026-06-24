@@ -34,6 +34,25 @@ void main() {
       expect(candidates[1].changes.map((change) => change.field), ['링크', '태그']);
     });
 
+    test('does not classify loose internal variants as updates', () {
+      final candidates = classifyImportedSongs(
+        existingSongs: const [],
+        incomingSongs: const [
+          Song(artist: 'N.Flying', title: 'Songbird', tags: []),
+          Song(
+            artist: 'N.Flying',
+            title: 'Songbird (Korean Ver.)',
+            tags: ['#korean'],
+            memo: 'variant memo',
+          ),
+        ],
+      );
+
+      expect(candidates.map((candidate) => candidate.status).toList(), [
+        SongImportCandidateStatus.newSong,
+        SongImportCandidateStatus.newSong,
+      ]);
+    });
     test('keeps existing values for blank incoming fields and merges tags', () {
       final merged = mergeImportedSong(
         existing,

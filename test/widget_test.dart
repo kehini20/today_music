@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -276,6 +277,24 @@ void main() {
     );
     expect(find.text('불러온 데이터는 직접 수정 또는 삭제할 수 있습니다.'), findsOneWidget);
 
+    final primaryButtonFinder = find.widgetWithText(
+      FilledButton,
+      activeTestOffer.primaryButton,
+    );
+    final secondaryButtonFinder = find.widgetWithText(
+      OutlinedButton,
+      activeTestOffer.secondaryButton,
+    );
+    expect(primaryButtonFinder, findsOneWidget);
+    expect(secondaryButtonFinder, findsOneWidget);
+    expect(
+      tester.getTopLeft(primaryButtonFinder).dy,
+      lessThan(tester.getTopLeft(secondaryButtonFinder).dy),
+    );
+    expect(
+      tester.getSize(primaryButtonFinder).width,
+      closeTo(tester.getSize(secondaryButtonFinder).width, 1),
+    );
     await tester.tap(find.text('직접 시작'));
     await tester.pumpAndSettle();
     final preferences = await SharedPreferences.getInstance();
@@ -347,6 +366,86 @@ void main() {
     );
   });
 
+  testWidgets(
+    'offered TXT internal variants stay new and hide update controls',
+    (WidgetTester tester) async {
+      final repository = FakeOfferRepository(
+        offers: [activeTestOffer],
+        text: '''
+[곡]
+가수명: N.Flying
+제목: Stand By Me
+메모:
+태그:
+링크:
+
+[곡]
+가수명: N.Flying
+제목: Stand By Me (Korean Ver.)
+메모: Korean version memo
+태그: #korean
+링크: https://example.com/stand-by-me-korean
+''',
+      );
+      await pumpTodayMusicApp(
+        tester,
+        initialValues: {},
+        offerRepository: repository,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('테스트 데이터 불러오기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('새 곡 2곡 · 확인 필요 0곡'), findsOneWidget);
+      expect(find.byKey(const ValueKey('select-all-updates')), findsNothing);
+      expect(find.textContaining('갱신 가능'), findsNothing);
+      expect(find.text('N.Flying - Stand By Me'), findsOneWidget);
+      expect(find.text('N.Flying - Stand By Me (Korean Ver.)'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'bundled offered TXT keeps all 119 songs through the import editor',
+    (WidgetTester tester) async {
+      final offerText = File(
+        'web/data/offers/limited_test_n_flying_202606.txt',
+      ).readAsStringSync();
+      final repository = FakeOfferRepository(
+        offers: [activeTestOffer],
+        text: offerText,
+      );
+      await pumpTodayMusicApp(
+        tester,
+        initialValues: {},
+        offerRepository: repository,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('테스트 데이터 불러오기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('새 곡 119곡 · 확인 필요 0곡'), findsOneWidget);
+      expect(find.byKey(const ValueKey('select-all-updates')), findsNothing);
+      expect(find.textContaining('갱신 가능'), findsNothing);
+      expect(find.textContaining('동일함'), findsNothing);
+
+      await tester.tap(find.text('선택한 항목 저장'));
+      await tester.pumpAndSettle();
+
+      final preferences = await SharedPreferences.getInstance();
+      final storedSongs =
+          jsonDecode(preferences.getString('tdm_alpha_songs')!)
+              as List<Object?>;
+      expect(storedSongs, hasLength(119));
+      final titles = storedSongs
+          .map((song) => (song as Map<String, Object?>)['title'])
+          .toList();
+      expect(titles, contains('Songbird'));
+      expect(titles, contains('Songbird (Korean Ver.)'));
+      expect(titles, contains('Stand By Me'));
+      expect(titles, contains('Stand By Me (Korean Ver.)'));
+    },
+  );
   testWidgets('existing songs suppress automatic offered data prompts', (
     WidgetTester tester,
   ) async {

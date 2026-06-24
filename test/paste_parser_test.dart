@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:today_music/paste_parser.dart';
 import 'package:today_music/song.dart';
@@ -331,6 +332,52 @@ N.Flying setlist
       expect(candidates.single.status, PasteSongCandidateStatus.existing);
     });
 
+    test(
+      'keeps loose internal title variants as new songs in an empty library',
+      () {
+        final candidates = buildPasteSongCandidates(
+          drafts: const [
+            PasteSongDraft(
+              sourceLine: 'Stand By Me',
+              artist: 'N.Flying',
+              title: 'Stand By Me',
+            ),
+            PasteSongDraft(
+              sourceLine: 'Stand By Me (Korean Ver.)',
+              artist: 'N.Flying',
+              title: 'Stand By Me (Korean Ver.)',
+              link: 'https://example.com/stand-by-me-korean',
+            ),
+          ],
+          inferredArtist: '',
+          existingSongs: const [],
+        );
+
+        expect(candidates.map((candidate) => candidate.status).toList(), [
+          PasteSongCandidateStatus.newSong,
+          PasteSongCandidateStatus.newSong,
+        ]);
+      },
+    );
+
+    test('bundled offered TXT is all new songs for an empty library', () {
+      final text = File(
+        'web/data/offers/limited_test_n_flying_202606.txt',
+      ).readAsStringSync();
+      final analysis = parsePastedSongText(text: text, existingSongs: const []);
+
+      expect(analysis.candidates, hasLength(119));
+      expect(
+        analysis.candidates.where(
+          (candidate) =>
+              candidate.status == PasteSongCandidateStatus.updateAvailable,
+        ),
+        isEmpty,
+      );
+      expect(analysis.candidates.map((candidate) => candidate.status).toSet(), {
+        PasteSongCandidateStatus.newSong,
+      });
+    });
     test('recalculates edited draft titles for internal duplicates', () {
       final candidates = buildPasteSongCandidates(
         drafts: const [

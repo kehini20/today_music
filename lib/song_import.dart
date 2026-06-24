@@ -157,29 +157,43 @@ List<SongImportCandidate> classifyImportedSongs({
   required Iterable<Song> incomingSongs,
   required Iterable<Song> existingSongs,
 }) {
-  final comparisonSongs = existingSongs.toList();
+  final storedComparisonSongs = existingSongs.toList();
+  final internalExactSongs = <String, Song>{};
   final candidates = <SongImportCandidate>[];
 
   for (final incoming in incomingSongs) {
-    final candidate = classifyImportedSong(
+    var candidate = classifyImportedSong(
       incoming: incoming,
-      existingSongs: comparisonSongs,
+      existingSongs: storedComparisonSongs,
     );
-    candidates.add(candidate);
+
     if (candidate.status == SongImportCandidateStatus.newSong) {
-      comparisonSongs.add(incoming);
+      final exactKey = songIdentityKey(incoming);
+      final internalDuplicate = internalExactSongs[exactKey];
+      if (internalDuplicate == null) {
+        internalExactSongs[exactKey] = incoming;
+      } else {
+        candidate = SongImportCandidate(
+          incomingSong: incoming,
+          existingSong: internalDuplicate,
+          mergedSong: internalDuplicate,
+          status: SongImportCandidateStatus.identical,
+        );
+      }
     } else if (candidate.status == SongImportCandidateStatus.updateAvailable) {
       final existing = candidate.existingSong;
       final merged = candidate.mergedSong;
       if (existing != null && merged != null) {
-        final index = comparisonSongs.indexWhere(
+        final index = storedComparisonSongs.indexWhere(
           (song) => identical(song, existing),
         );
         if (index != -1) {
-          comparisonSongs[index] = merged;
+          storedComparisonSongs[index] = merged;
         }
       }
     }
+
+    candidates.add(candidate);
   }
   return candidates;
 }

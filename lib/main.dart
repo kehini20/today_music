@@ -988,7 +988,9 @@ class _TodaySongPageState extends State<TodaySongPage> {
                       contentPadding: EdgeInsets.zero,
                       dense: true,
                       controlAffinity: ListTileControlAffinity.leading,
-                      title: const Text('다시 보지 않기'),
+                      title: const Text(
+                        '\uB2E4\uC2DC \uBCF4\uC9C0 \uC54A\uAE30',
+                      ),
                       value: doNotShowAgain,
                       onChanged: (value) {
                         refreshDialog(() {
@@ -996,30 +998,36 @@ class _TodaySongPageState extends State<TodaySongPage> {
                         });
                       },
                     ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () async {
+                          await rememberChoice();
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                          await _loadOfferedData(offer);
+                        },
+                        child: Text(offer.primaryButton, maxLines: 1),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          await rememberChoice();
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                        },
+                        child: Text(offer.secondaryButton, maxLines: 1),
+                      ),
+                    ),
                   ],
                 ),
               ),
-              actions: [
-                FilledButton(
-                  onPressed: () async {
-                    await rememberChoice();
-                    if (dialogContext.mounted) {
-                      Navigator.of(dialogContext).pop();
-                    }
-                    await _loadOfferedData(offer);
-                  },
-                  child: Text(offer.primaryButton, maxLines: 1),
-                ),
-                OutlinedButton(
-                  onPressed: () async {
-                    await rememberChoice();
-                    if (dialogContext.mounted) {
-                      Navigator.of(dialogContext).pop();
-                    }
-                  },
-                  child: Text(offer.secondaryButton, maxLines: 1),
-                ),
-              ],
             );
           },
         );
@@ -5092,6 +5100,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
     var addedCount = 0;
     var updatedCount = 0;
     setState(() {
+      final storedExactSongKeys = _songs.map(songIdentityKey).toSet();
       for (final candidate in candidates) {
         final incoming = candidate.song;
         if (incoming == null) {
@@ -5099,7 +5108,7 @@ class _TodaySongPageState extends State<TodaySongPage> {
         }
 
         if (candidate.status == PasteSongCandidateStatus.newSong) {
-          if (findMatchingSong(incoming, _songs) == null) {
+          if (storedExactSongKeys.add(songIdentityKey(incoming))) {
             _songs.add(
               incoming.id.isEmpty
                   ? incoming.copyWith(id: createSongId())
